@@ -5,16 +5,16 @@ import ActionButtons from './components/ActionButtons';
 import BusinessList from './components/BusinessList';
 import BusinessDetail from './components/BusinessDetail';
 import Footer from './components/Footer';
-import { Business } from './types';
+import { Business, GuideSettings } from './types';
 import { BUSINESSES, CAROUSEL_IMAGES } from './constants';
 import { createClient, Session } from '@supabase/supabase-js';
 import Anuncie from './components/anuncie';
 import ComoChegar from './components/ComoChegar';
 import AdminComoChegar from './components/AdminComoChegar';
+import { useAuth } from './contexts/AuthContext';
+import { useGuide } from './contexts/GuideContext';
+import { supabase } from './lib/supabase';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-const supabase = createClient(supabaseUrl, supabaseAnonKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 
 interface AdminBusiness {
   id: string | number;
@@ -75,14 +75,14 @@ const App: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const { session, isAdmin, signIn, signOut } = useAuth();
   const [view, setView] = useState<'none' | 'login' | 'admin' | 'anuncie' | 'comoChegar' | 'tours' | 'useful' | 'phones' | 'photos' | 'historyPage' | 'events' | 'eventDetail'>('none');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
-  const [isAdmin, setIsAdmin] = useState(false);
+  // const [isAdmin, setIsAdmin] = useState(false); // Replaced by useAuth
   const [adminNotice, setAdminNotice] = useState<string | null>(null);
 
   const [adminBusinesses, setAdminBusinesses] = useState<AdminBusiness[]>([]);
@@ -100,15 +100,16 @@ const App: React.FC = () => {
   const [publicLoading, setPublicLoading] = useState(false);
   const [publicError, setPublicError] = useState<string | null>(null);
 
-  const [guide, setGuide] = useState({ 
-    app_name: 'Guia Boipeba', 
-    whatsapp: '', 
-    favicon_url: '', 
-    splash_url: '', 
-    app_icon_url: '' 
-  });
-  const [guideLoading, setGuideLoading] = useState(false);
-  const [guideError, setGuideError] = useState<string | null>(null);
+  const { guide: contextGuide, updateGuideSettings: contextUpdateGuide, loading: guideLoading, error: guideError, refreshGuide } = useGuide();
+  const [guide, setGuide] = useState<GuideSettings>(contextGuide);
+
+  useEffect(() => {
+    if (contextGuide) setGuide(contextGuide);
+  }, [contextGuide]);
+
+
+  // const [guideLoading, setGuideLoading] = useState(false);
+  // const [guideError, setGuideError] = useState<string | null>(null);
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
   const [splashFile, setSplashFile] = useState<File | null>(null);
   const [iconFile, setIconFile] = useState<File | null>(null);
@@ -225,59 +226,41 @@ const App: React.FC = () => {
   const toursDisplay = useMemo(() => [mockTour, ...toursSections], [toursSections]);
   const [toursLoading, setToursLoading] = useState(false);
 
-  const fetchGuideSettings = async () => {
-  setGuideLoading(true); setGuideError(null);
-  const { data, error } = await supabase.from('guide_settings').select('*').eq('id', true).single();
-  if (error) setGuideError(error.message);
-  else if (data) setGuide({
-    app_name: data.app_name || 'Guia Boipeba',
-    whatsapp: data.whatsapp || '',
-    favicon_url: data.favicon_url || '',
-    splash_url: data.splash_url || '',
-    app_icon_url: data.app_icon_url || ''
-  });
-  setGuideLoading(false);
-};
 
-const uploadBrandFile = async (file: File, kind: 'favicon' | 'splash' | 'icon') => {
-  const ext = file.name.split('.').pop() || 'png';
-  const name = `branding/${kind}-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-  const { error } = await supabase.storage.from('site-media').upload(name, file, { cacheControl: '3600', upsert: false, contentType: file.type });
-  if (error) throw error;
-  const { data } = supabase.storage.from('site-media').getPublicUrl(name);
-  return data?.publicUrl || '';
-};
-
-const saveGuideSettings = async (e: React.FormEvent) => {
-  e.preventDefault();
-  try {
-    setGuideLoading(true); setGuideError(null);
-    let { favicon_url, splash_url, app_icon_url } = guide;
-    if (faviconFile) favicon_url = await uploadBrandFile(faviconFile, 'favicon');
-    if (splashFile) splash_url = await uploadBrandFile(splashFile, 'splash');
-    if (iconFile) app_icon_url = await uploadBrandFile(iconFile, 'icon');
-
-    const payload = { id: true, app_name: guide.app_name, whatsapp: guide.whatsapp, favicon_url, splash_url, app_icon_url, updated_at: new Date().toISOString() };
-    const { error } = await supabase.from('guide_settings').upsert(payload).eq('id', true);
+  const uploadBrandFile = async (file: File, kind: 'favicon' | 'splash' | 'icon') => {
+    const ext = file.name.split('.').pop() || 'png';
+    const name = `branding/${kind}-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error } = await supabase.storage.from('site-media').upload(name, file, { cacheControl: '3600', upsert: false, contentType: file.type });
     if (error) throw error;
-    setGuide(g => ({ ...g, favicon_url, splash_url, app_icon_url }));
+    const { data } = supabase.storage.from('site-media').getPublicUrl(name);
+    return data?.publicUrl || '';
+  };
 
-    // Atualiza título e favicon dinâmico
-    document.title = guide.app_name || 'Guia';
-    let fav = document.querySelector<HTMLLinkElement>('link[rel="icon"]#dynamic-favicon');
-    if (!fav) { fav = document.createElement('link'); fav.rel = 'icon'; fav.id = 'dynamic-favicon'; document.head.appendChild(fav); }
-    if (favicon_url) fav.href = favicon_url;
+  const saveGuideSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      let { favicon_url, splash_url, app_icon_url } = guide;
 
-    // Recarrega do banco para refletir exatamente o persistido
-    await fetchGuideSettings();
-    alert('Dados do Guia salvos com sucesso.');
-    setFaviconFile(null); setSplashFile(null); setIconFile(null);
-  } catch (err: any) {
-    setGuideError(err.message || 'Falha ao salvar Dados do Guia');
-  } finally {
-    setGuideLoading(false);
-  }
-};
+      if (faviconFile) favicon_url = await uploadBrandFile(faviconFile, 'favicon');
+      if (splashFile) splash_url = await uploadBrandFile(splashFile, 'splash');
+      if (iconFile) app_icon_url = await uploadBrandFile(iconFile, 'icon');
+
+      const payload: any = {
+        app_name: guide.app_name,
+        whatsapp: guide.whatsapp,
+        favicon_url,
+        splash_url,
+        app_icon_url
+      };
+
+      await contextUpdateGuide(payload);
+
+      alert('Dados do Guia salvos com sucesso.');
+      setFaviconFile(null); setSplashFile(null); setIconFile(null);
+    } catch (err: any) {
+      alert(err.message || 'Falha ao salvar Dados do Guia');
+    }
+  };
 
 
 
@@ -404,7 +387,7 @@ const saveGuideSettings = async (e: React.FormEvent) => {
     el.style.color = '#111827';
     el.textContent = text;
     document.body.appendChild(el);
-    return { el, cleanup: () => { try { document.body.removeChild(el); } catch {} } };
+    return { el, cleanup: () => { try { document.body.removeChild(el); } catch { } } };
   };
 
   // Business form selected IDs
@@ -532,7 +515,7 @@ const saveGuideSettings = async (e: React.FormEvent) => {
     const ext = logoFile.name.split('.').pop() || 'jpg';
     const name = `logo-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
     const path = `businesses/${session?.user?.id || 'anon'}/${businessId}/${name}`;
-    
+
     const { error: upErr } = await supabase.storage
       .from('site-media')
       .upload(path, logoFile, {
@@ -540,9 +523,9 @@ const saveGuideSettings = async (e: React.FormEvent) => {
         upsert: false,
         contentType: logoFile.type || 'image/jpeg',
       });
-    
+
     if (upErr) throw upErr;
-    
+
     const { data: pub } = supabase.storage.from('site-media').getPublicUrl(path);
     return pub?.publicUrl || null;
   };
@@ -566,33 +549,6 @@ const saveGuideSettings = async (e: React.FormEvent) => {
   const logoutRequestedRef = useRef(false);
 
   // FunÃ§Ãµes de autenticaÃ§Ã£o e admin
-  const refreshIsAdmin = async (userId: string): Promise<boolean> => {
-    try {
-      const { data, error } = await supabase
-        .from('admin_users')
-        .select('user_id')
-        .eq('user_id', userId)
-        .maybeSingle();
-      
-      if (error) throw error;
-      return !!data;
-    } catch (error) {
-      console.error('Erro ao verificar admin:', error);
-      return false;
-    }
-  };
-
-  const checkAdminWithTimeout = async (userId: string): Promise<boolean> => {
-    try {
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Timeout')), 5000)
-      );
-      const adminPromise = refreshIsAdmin(userId);
-      return await Promise.race([adminPromise, timeoutPromise]);
-    } catch {
-      return false;
-    }
-  };
 
   const handleAdmClick = () => {
     window.history.pushState(null, '', '/admin');
@@ -616,28 +572,24 @@ const saveGuideSettings = async (e: React.FormEvent) => {
   const handleLogout = async () => {
     try {
       logoutRequestedRef.current = true;
-      await supabase.auth.signOut();
-    } catch {}
+      await signOut();
+    } catch { }
     // fallback para garantir saÃ­da visual mesmo que o listener demore
-    setIsAdmin(false);
-    setSession(null);
     setView('login');
   };
 
   const handleLogin = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setAuthError(null);
-  setAuthLoading(true);
-  try {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-    // onAuthStateChange listener cuidarÃ¡ da navegaÃ§Ã£o e checagem de admin
-  } catch (err: any) {
-    setAuthError(err.message || 'Falha ao entrar');
-  } finally {
-    setAuthLoading(false);
-  }
-};
+    e.preventDefault();
+    setAuthError(null);
+    setAuthLoading(true);
+    try {
+      await signIn(email, password);
+    } catch (err: any) {
+      setAuthError(err.message || 'Falha ao entrar');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
 
   const handleBack = () => {
     setSelectedBusiness(null);
@@ -648,8 +600,8 @@ const saveGuideSettings = async (e: React.FormEvent) => {
   };
 
   // Normaliza strings para busca sem acentos
-const normalizeForSearch = (s: string) =>
-  (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const normalizeForSearch = (s: string) =>
+    (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
   const openComoChegar = () => {
     setView('comoChegar');
@@ -761,7 +713,7 @@ const normalizeForSearch = (s: string) =>
         .from('businesses')
         .select('*')
         .order('created_at', { ascending: false });
-      
+
       if (error) throw error;
       setAdminBusinesses(data as AdminBusiness[]);
       // verifica e expira anúncios conforme planos
@@ -779,7 +731,7 @@ const normalizeForSearch = (s: string) =>
         .from('businesses')
         .update({ status: 'approved' })
         .eq('id', id);
-      
+
       if (error) throw error;
 
       try {
@@ -806,7 +758,7 @@ const normalizeForSearch = (s: string) =>
             await supabase.from('phone_directory').insert([payloadPhone]);
           }
         }
-      } catch {}
+      } catch { }
 
       await fetchAdminBusinesses();
       await fetchPublicBusinesses();
@@ -824,7 +776,7 @@ const normalizeForSearch = (s: string) =>
         .from('businesses')
         .update({ status: 'rejected' })
         .eq('id', id);
-      
+
       if (error) throw error;
       await fetchAdminBusinesses();
     } catch (error: any) {
@@ -909,7 +861,7 @@ const normalizeForSearch = (s: string) =>
         }])
         .select('id')
         .single();
-      
+
       if (insertRes.error) throw insertRes.error;
       const newId = String(insertRes.data.id);
 
@@ -966,7 +918,7 @@ const normalizeForSearch = (s: string) =>
             await supabase.from('phone_directory').insert([payloadPhone]);
           }
         }
-      } catch {}
+      } catch { }
 
       // Reset form
       setNewBiz({ name: '', category: '', description: '', address: '', phone: '', whatsapp: '', instagram: '', tripadvisor: '', website: '', logo: '' });
@@ -1011,7 +963,7 @@ const normalizeForSearch = (s: string) =>
         .eq('id', editingId)
         .select('id')
         .single();
-      
+
       if (updRes.error) throw updRes.error;
 
       // Atualiza o campo textual `category` com o nome da categoria escolhida
@@ -1190,45 +1142,45 @@ const normalizeForSearch = (s: string) =>
         .select('*')
         .eq('status', 'approved')
         .order('name');
-      
+
       if (error) throw error;
       setPublicBusinessesRaw(data || []);
-      
+
       // Convert to Business type
-const businesses: Business[] = (data ?? []).map((b: any) => {
-  const imagesArray =
-    Array.isArray(b.images)
-      ? b.images.filter((s: any) => typeof s === 'string' && s)
-      : (typeof b.images === 'string' && b.images ? [b.images] : []);
+      const businesses: Business[] = (data ?? []).map((b: any) => {
+        const imagesArray =
+          Array.isArray(b.images)
+            ? b.images.filter((s: any) => typeof s === 'string' && s)
+            : (typeof b.images === 'string' && b.images ? [b.images] : []);
 
-  return {
-    id: b.id,
-    name: b.name ?? '',
-    category: b.category ?? '',
-    description: b.description ?? '',
-    address: b.address ?? '',
-    phone: b.phone ?? '',
-    whatsapp: b.whatsapp ?? '',
-    instagram: b.instagram ?? '',
-    website: b.website ?? '',
-    tripadvisor: b.tripadvisor ?? '',
-    logo: (typeof b.logo === 'string' && b.logo) ? b.logo : '',
-    images: imagesArray.length > 0 ? imagesArray : [PUBLIC_PLACEHOLDER_IMG],
-    rating: Number(b.rating ?? 0),
-    reviewCount: Number(b.review_count ?? 0),
+        return {
+          id: b.id,
+          name: b.name ?? '',
+          category: b.category ?? '',
+          description: b.description ?? '',
+          address: b.address ?? '',
+          phone: b.phone ?? '',
+          whatsapp: b.whatsapp ?? '',
+          instagram: b.instagram ?? '',
+          website: b.website ?? '',
+          tripadvisor: b.tripadvisor ?? '',
+          logo: (typeof b.logo === 'string' && b.logo) ? b.logo : '',
+          images: imagesArray.length > 0 ? imagesArray : [PUBLIC_PLACEHOLDER_IMG],
+          rating: Number(b.rating ?? 0),
+          reviewCount: Number(b.review_count ?? 0),
 
-    // IDs para filtros (usados no app)
-    category_id: b.category_id ?? null,
-    subcategory_id: b.subcategory_id ?? null,
-    location_id: b.location_id ?? null,
+          // IDs para filtros (usados no app)
+          category_id: b.category_id ?? null,
+          subcategory_id: b.subcategory_id ?? null,
+          location_id: b.location_id ?? null,
 
-    // Campos requeridos pelo tipo Business
-    tags: Array.isArray(b.tags) ? b.tags : [],
-    isPremium: Boolean(b.is_premium ?? b.isPremium ?? false),
-    reviews: Array.isArray(b.reviews) ? b.reviews : [],
-  } as Business;
-});
-      
+          // Campos requeridos pelo tipo Business
+          tags: Array.isArray(b.tags) ? b.tags : [],
+          isPremium: Boolean(b.is_premium ?? b.isPremium ?? false),
+          reviews: Array.isArray(b.reviews) ? b.reviews : [],
+        } as Business;
+      });
+
       setPublicBusinesses(businesses);
     } catch (error: any) {
       setPublicError(error.message);
@@ -1418,7 +1370,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
       const payload = { ...eventForm, time: eventForm.time || null, location_id: eventForm.location_id || null, local_text: eventForm.local_text || null, description: eventForm.description || null, banner_url: uploadedUrl || eventForm.banner_url || null, link: eventForm.link || null, instagram_url: eventForm.instagram_url || null, facebook_url: eventForm.facebook_url || null } as any;
       const { error } = await supabase.from('events').insert([payload]);
       if (error) throw error;
-      setEventForm({ title:'', date:'', time:'', location_id:'', local_text:'', description:'', banner_url:'', link:'', instagram_url:'', facebook_url:'', visible:true, is_pinned:false, sort_order:0 });
+      setEventForm({ title: '', date: '', time: '', location_id: '', local_text: '', description: '', banner_url: '', link: '', instagram_url: '', facebook_url: '', visible: true, is_pinned: false, sort_order: 0 });
       setEventBannerFile(null);
       setEventBannerPreview('');
       await fetchEvents();
@@ -1429,7 +1381,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
 
   const editEvent = (row: EventDB) => {
     setEventEditingId(String(row.id));
-    setEventForm({ title: row.title || '', date: row.date ? row.date.slice(0,10) : '', time: row.time || '', location_id: row.location_id || '', local_text: (row as any).local_text || '', description: row.description || '', banner_url: row.banner_url || '', link: row.link || '', instagram_url: (row as any).instagram_url || '', facebook_url: (row as any).facebook_url || '', visible: !!row.visible, is_pinned: !!row.is_pinned, sort_order: Number(row.sort_order || 0) });
+    setEventForm({ title: row.title || '', date: row.date ? row.date.slice(0, 10) : '', time: row.time || '', location_id: row.location_id || '', local_text: (row as any).local_text || '', description: row.description || '', banner_url: row.banner_url || '', link: row.link || '', instagram_url: (row as any).instagram_url || '', facebook_url: (row as any).facebook_url || '', visible: !!row.visible, is_pinned: !!row.is_pinned, sort_order: Number(row.sort_order || 0) });
     setEventBannerFile(null);
     setEventBannerPreview('');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1457,7 +1409,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
       const { error } = await supabase.from('events').update(payload).eq('id', eventEditingId);
       if (error) throw error;
       setEventEditingId(null);
-      setEventForm({ title:'', date:'', time:'', location_id:'', local_text:'', description:'', banner_url:'', link:'', instagram_url:'', facebook_url:'', visible:true, is_pinned:false, sort_order:0 });
+      setEventForm({ title: '', date: '', time: '', location_id: '', local_text: '', description: '', banner_url: '', link: '', instagram_url: '', facebook_url: '', visible: true, is_pinned: false, sort_order: 0 });
       setEventBannerFile(null);
       setEventBannerPreview('');
       await fetchEvents();
@@ -1485,7 +1437,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
         .select('*')
         .eq('active', true)
         .order('sort_order', { ascending: true });
-      
+
       if (error) throw error;
       setCarouselPublicItems(data as CarouselItemDB[]);
     } catch (error: any) {
@@ -1501,7 +1453,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
         .from('carousel_items')
         .select('*')
         .order('sort_order', { ascending: true });
-      
+
       if (error) throw error;
       setCarouselAdminItems(data as CarouselItemDB[]);
     } catch (error: any) {
@@ -1524,7 +1476,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  
+
 
 
   const createOrUpdateCarouselItem = async (e: React.FormEvent) => {
@@ -1577,7 +1529,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
         }
         const { error } = await supabase
           .from('carousel_items')
-          .insert([{ 
+          .insert([{
             image_url: uploadedUrl,
             is_ad: carouselForm.is_ad,
             cta_text: carouselForm.cta_text || null,
@@ -1608,7 +1560,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
         .from('carousel_items')
         .delete()
         .eq('id', id);
-      
+
       if (error) throw error;
       await fetchAdminCarouselItems();
     } catch (error: any) {
@@ -1622,16 +1574,16 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
     setPhoneError(null);
     try {
       let query = supabase.from('phone_directory').select('*');
-      
+
       if (phoneFilterCatId) {
         query = query.eq('category_id', phoneFilterCatId);
       }
       if (phoneFilterSubId) {
         query = query.eq('subcategory_id', phoneFilterSubId);
       }
-      
+
       const { data, error } = await query.order('name');
-      
+
       if (error) throw error;
       setPhones(data || []);
     } catch (error: any) {
@@ -1679,16 +1631,16 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
           .from('phone_directory')
           .update(payload)
           .eq('id', phoneEditingId);
-        
+
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from('phone_directory')
           .insert([payload]);
-        
+
         if (error) throw error;
       }
-      
+
       resetPhoneForm();
       await fetchPhones();
     } catch (error: any) {
@@ -1704,7 +1656,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
         .from('phone_directory')
         .update({ visible: !phone.visible })
         .eq('id', phone.id);
-      
+
       if (error) throw error;
       await fetchPhones();
     } catch (error: any) {
@@ -1719,7 +1671,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
         .from('phone_directory')
         .delete()
         .eq('id', id);
-      
+
       if (error) throw error;
       await fetchPhones();
     } catch (error: any) {
@@ -1737,7 +1689,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
         .select('id, title, body, sort_order, visible, created_at')
         .order('sort_order', { ascending: true })
         .order('created_at', { ascending: true });
-      
+
       if (error) throw error;
       setUsefulRows(data || []);
     } catch (error: any) {
@@ -1781,16 +1733,16 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
           .from('useful_info')
           .update(payload)
           .eq('id', usefulEditingId);
-        
+
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from('useful_info')
           .insert([payload]);
-        
+
         if (error) throw error;
       }
-      
+
       resetUseful();
       await fetchUsefulInfo();
     } catch (error: any) {
@@ -1806,7 +1758,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
         .from('useful_info')
         .update({ visible: !row.visible })
         .eq('id', row.id);
-      
+
       if (!error) {
         await fetchUsefulInfo();
       } else {
@@ -1824,7 +1776,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
         .from('useful_info')
         .delete()
         .eq('id', id);
-      
+
       if (!error) {
         await fetchUsefulInfo();
       } else {
@@ -1846,7 +1798,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
         .order('updated_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      
+
       if (error && error.code !== 'PGRST116') throw error;
       setHistoryBody(data?.body || '');
     } catch (error: any) {
@@ -1866,19 +1818,19 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
         .select('id')
         .limit(1)
         .maybeSingle();
-      
+
       if (data?.id) {
         const { error } = await supabase
           .from('site_history')
           .update({ body: historyBody })
           .eq('id', data.id);
-        
+
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from('site_history')
           .insert([{ body: historyBody }]);
-        
+
         if (error) throw error;
       }
     } catch (error: any) {
@@ -1895,7 +1847,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
         .select('id, image_url, caption, sort_order, visible, created_at')
         .order('sort_order', { ascending: true })
         .order('created_at', { ascending: true });
-      
+
       if (!error) setHistoryImages(data || []);
     } catch (error) {
       console.error('Erro ao carregar imagens:', error);
@@ -1911,33 +1863,33 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
       const ext = historyFile.name.split('.').pop() || 'jpg';
       const name = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
       const path = `history/${session?.user?.id || 'anon'}/${name}`;
-      
+
       const { error: upErr } = await supabase.storage
         .from('site-media')
-        .upload(path, historyFile, { 
-          cacheControl: '3600', 
-          upsert: false, 
-          contentType: historyFile.type 
+        .upload(path, historyFile, {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: historyFile.type
         });
-      
+
       if (upErr) throw upErr;
-      
+
       const { data: pub } = supabase.storage.from('site-media').getPublicUrl(path);
       const url = pub?.publicUrl;
-      
+
       if (!url) throw new Error('URL pública indisponível');
-      
+
       const { error } = await supabase
         .from('site_history_images')
-        .insert([{ 
-          image_url: url, 
-          caption: historyCaption || null, 
-          sort_order: 0, 
-          visible: true 
+        .insert([{
+          image_url: url,
+          caption: historyCaption || null,
+          sort_order: 0,
+          visible: true
         }]);
-      
+
       if (error) throw error;
-      
+
       setHistoryFile(null);
       setHistoryCaption('');
       await fetchHistoryImages();
@@ -1962,7 +1914,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
         .from('site_history_images')
         .update({ caption: historyCaption || null })
         .eq('id', historyEditingId);
-      
+
       if (!error) {
         setHistoryEditingId(null);
         setHistoryCaption('');
@@ -1979,7 +1931,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
         .from('site_history_images')
         .update({ visible: !row.visible })
         .eq('id', row.id);
-      
+
       if (!error) await fetchHistoryImages();
     } catch (error) {
       console.error('Erro ao alternar visibilidade:', error);
@@ -1993,7 +1945,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
         .from('site_history_images')
         .delete()
         .eq('id', id);
-      
+
       if (!error) await fetchHistoryImages();
     } catch (error) {
       console.error('Erro ao excluir imagem:', error);
@@ -2010,7 +1962,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
         .select('id, image_url, caption, sort_order, visible, created_at')
         .order('sort_order', { ascending: true })
         .order('created_at', { ascending: true });
-      
+
       if (error) throw error;
       setPhotos(data || []);
     } catch (error: any) {
@@ -2029,33 +1981,33 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
       const ext = photoFile.name.split('.').pop() || 'jpg';
       const name = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
       const path = `photos/${session?.user?.id || 'anon'}/${name}`;
-      
+
       const { error: upErr } = await supabase.storage
         .from('site-media')
-        .upload(path, photoFile, { 
-          cacheControl: '3600', 
-          upsert: false, 
-          contentType: photoFile.type 
+        .upload(path, photoFile, {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: photoFile.type
         });
-      
+
       if (upErr) throw upErr;
-      
+
       const { data: pub } = supabase.storage.from('site-media').getPublicUrl(path);
       const url = pub?.publicUrl;
-      
+
       if (!url) throw new Error('URL pÃºblica indisponÃ­vel');
-      
+
       const { error } = await supabase
         .from('site_photos')
-        .insert([{ 
-          image_url: url, 
-          caption: photoCaption || null, 
-          sort_order: 0, 
-          visible: true 
+        .insert([{
+          image_url: url,
+          caption: photoCaption || null,
+          sort_order: 0,
+          visible: true
         }]);
-      
+
       if (error) throw error;
-      
+
       setPhotoFile(null);
       setPhotoCaption('');
       await fetchPhotos();
@@ -2080,7 +2032,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
         .from('site_photos')
         .update({ caption: photoCaption || null })
         .eq('id', photoEditingId);
-      
+
       if (!error) {
         setPhotoEditingId(null);
         setPhotoCaption('');
@@ -2097,7 +2049,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
         .from('site_photos')
         .update({ visible: !row.visible })
         .eq('id', row.id);
-      
+
       if (!error) await fetchPhotos();
     } catch (error: any) {
       setPhotoError(error.message);
@@ -2111,7 +2063,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
         .from('site_photos')
         .delete()
         .eq('id', id);
-      
+
       if (!error) await fetchPhotos();
     } catch (error: any) {
       setPhotoError(error.message);
@@ -2150,7 +2102,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
         .select('*')
         .order('sort_order')
         .order('name');
-      
+
       if (error) throw error;
       setCategories(data || []);
     } catch (error: any) {
@@ -2161,13 +2113,13 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
   const fetchSubcategories = async (categoryId?: string) => {
     try {
       let query = supabase.from('subcategories').select('*');
-      
+
       if (categoryId) {
         query = query.eq('category_id', categoryId);
       }
-      
+
       const { data, error } = await query.order('sort_order').order('name');
-      
+
       if (error) throw error;
       setSubcategories(data || []);
     } catch (error: any) {
@@ -2182,7 +2134,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
         .select('*')
         .order('sort_order')
         .order('name');
-      
+
       if (error) throw error;
       setLocations(data || []);
     } catch (error: any) {
@@ -2196,7 +2148,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
         .from('categories')
         .update({ name: newName })
         .eq('id', id);
-      
+
       if (error) throw error;
       setEditingCatId('');
       setEditingCatName('');
@@ -2212,7 +2164,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
         .from('subcategories')
         .update({ name: newName })
         .eq('id', id);
-      
+
       if (error) throw error;
       setEditingSubId('');
       setEditingSubName('');
@@ -2228,7 +2180,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
         .from('locations')
         .update({ name: newName })
         .eq('id', id);
-      
+
       if (error) throw error;
       setEditingLocId('');
       setEditingLocName('');
@@ -2569,25 +2521,25 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
   const undoCategoriesOrder = async () => {
     const prev = lastCategoriesOrderRef.current; if (!prev) return;
     // ensure order sorted by previous sort_order
-    const ordered = [...prev].sort((a:any,b:any)=> (a.sort_order??0)-(b.sort_order??0));
+    const ordered = [...prev].sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
     await applyCategoriesOrder(ordered as any[]);
     lastCategoriesOrderRef.current = null;
   };
   const undoSubcategoriesOrder = async () => {
     const prev = lastSubcategoriesOrderRef.current; if (!prev) return;
-    const ordered = [...prev.list].sort((a:any,b:any)=> (a.sort_order??0)-(b.sort_order??0));
+    const ordered = [...prev.list].sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
     await applySubcategoriesOrder(prev.catId, ordered as any[]);
     lastSubcategoriesOrderRef.current = null;
   };
   const undoLocationsOrder = async () => {
     const prev = lastLocationsOrderRef.current; if (!prev) return;
-    const ordered = [...prev].sort((a:any,b:any)=> (a.sort_order??0)-(b.sort_order??0));
+    const ordered = [...prev].sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
     await applyLocationsOrder(ordered as any[]);
     lastLocationsOrderRef.current = null;
   };
 
   // -------- Mobile long-press drag (Pointer Events) on handle ---------
-  const findTargetIdAtPoint = (type: 'category'|'subcategory'|'location', x: number, y: number): string | null => {
+  const findTargetIdAtPoint = (type: 'category' | 'subcategory' | 'location', x: number, y: number): string | null => {
     const el = document.elementFromPoint(x, y) as HTMLElement | null;
     if (!el) return null;
     let node: HTMLElement | null = el;
@@ -2619,7 +2571,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
         prevTouchActionRef.current = undefined;
         prevOverscrollRef.current = undefined;
       }
-    } catch {}
+    } catch { }
     // cleanup ghost if any
     try { dragCleanupRef.current?.(); } finally { dragCleanupRef.current = null; }
     setDragging(null);
@@ -2646,9 +2598,9 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
     window.removeEventListener('pointercancel', pointerUpHandler);
   };
 
-  const onHandlePointerDown = (e: React.PointerEvent, type: 'category'|'subcategory'|'location', id: string, label: string) => {
-    try { (e.target as HTMLElement).setPointerCapture?.(e.pointerId); } catch {}
-    try { e.preventDefault(); } catch {}
+  const onHandlePointerDown = (e: React.PointerEvent, type: 'category' | 'subcategory' | 'location', id: string, label: string) => {
+    try { (e.target as HTMLElement).setPointerCapture?.(e.pointerId); } catch { }
+    try { e.preventDefault(); } catch { }
     // Start long press timer
     if (longPressTimerRef.current) window.clearTimeout(longPressTimerRef.current);
     pointerStartRef.current = { x: e.clientX, y: e.clientY };
@@ -2666,7 +2618,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
           document.body.style.touchAction = 'none';
           (document.body.style as any).overscrollBehavior = 'none';
         }
-      } catch {}
+      } catch { }
     };
     if (isCoarsePointer) {
       // Android: ativar imediatamente ao pressionar
@@ -2701,23 +2653,23 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
 
   // Filtered businesses for home page
   const filteredBusinesses = useMemo(() => {
-  const q = normalizeForSearch(searchTerm);
-  return publicBusinesses.filter(business => {
-    const nameN = normalizeForSearch(business.name);
-    const catN = normalizeForSearch(business.category);
-    const descN = normalizeForSearch(business.description || '');
-    const tagsN = Array.isArray((business as any).tags) ? (business as any).tags.map((t: any) => normalizeForSearch(String(t || ''))) : [];
-    const matchesTags = !q ? true : tagsN.some((t: string) => t.includes(q));
-    const matchesSearch = !q || nameN.includes(q) || catN.includes(q) || descN.includes(q) || matchesTags;
+    const q = normalizeForSearch(searchTerm);
+    return publicBusinesses.filter(business => {
+      const nameN = normalizeForSearch(business.name);
+      const catN = normalizeForSearch(business.category);
+      const descN = normalizeForSearch(business.description || '');
+      const tagsN = Array.isArray((business as any).tags) ? (business as any).tags.map((t: any) => normalizeForSearch(String(t || ''))) : [];
+      const matchesTags = !q ? true : tagsN.some((t: string) => t.includes(q));
+      const matchesSearch = !q || nameN.includes(q) || catN.includes(q) || descN.includes(q) || matchesTags;
 
-    const matchesCategory = !homeCategoryId || (business as any).category_id === homeCategoryId;
-    const matchesSubcategory = !homeSubcategoryId || (business as any).subcategory_id === homeSubcategoryId;
-    const matchesLocation = !homeLocationId || (business as any).location_id === homeLocationId;
-    const matchesRating = business.rating >= homeRatingMin;
+      const matchesCategory = !homeCategoryId || (business as any).category_id === homeCategoryId;
+      const matchesSubcategory = !homeSubcategoryId || (business as any).subcategory_id === homeSubcategoryId;
+      const matchesLocation = !homeLocationId || (business as any).location_id === homeLocationId;
+      const matchesRating = business.rating >= homeRatingMin;
 
-    return matchesSearch && matchesCategory && matchesSubcategory && matchesLocation && matchesRating;
-  });
-}, [publicBusinesses, searchTerm, homeCategoryId, homeSubcategoryId, homeLocationId, homeRatingMin]);
+      return matchesSearch && matchesCategory && matchesSubcategory && matchesLocation && matchesRating;
+    });
+  }, [publicBusinesses, searchTerm, homeCategoryId, homeSubcategoryId, homeLocationId, homeRatingMin]);
 
   // Businesses in category "Passeios & Atividades" (for Tours page)
   const toursBusinesses = useMemo(() => {
@@ -2733,61 +2685,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
       .slice(0, 4);
   }, [publicBusinesses, selectedBusiness]);
 
-  useEffect(() => {
-    let mounted = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return;
-      setSession(data.session ?? null);
-      if (data.session?.user?.id) {
-        void refreshIsAdmin(data.session.user.id);
-      }
-    });
-    
-    const { data: listener } = supabase.auth.onAuthStateChange(async (event, sess) => {
-      console.debug('[auth] state change:', event, !!sess?.user);
-      setSession(sess ?? null);
-
-      if (event === 'SIGNED_OUT') {
-        if (logoutRequestedRef.current) {
-          logoutRequestedRef.current = false;
-          setIsAdmin(false);
-          if (view === 'admin') setView('login');
-        } else {
-          const { data } = await supabase.auth.getSession();
-          if (!data.session) return;
-        }
-      }
-      
-      if (!sess?.user) return;
-
-      if (isAdmin) {
-        try {
-          const allowed = await checkAdminWithTimeout(sess.user.id);
-          if (!allowed) {
-            setAdminNotice('Não foi possível confirmar permissões agora. Tentaremos novamente em instantes.');
-          }
-        } catch {}
-        return;
-      }
-
-      const allowed = await checkAdminWithTimeout(sess.user.id);
-      if (allowed) {
-        setIsAdmin(true);
-        setAdminNotice(null);
-        if (window.location.pathname === '/admin') {
-          setView('admin');
-        }
-      } else {
-        setIsAdmin(false);
-        setAdminNotice('Seu usuário não tem permissão de administrador.');
-      }
-    });
-    
-    return () => {
-      mounted = false;
-      listener.subscription.unsubscribe();
-    };
-  }, []);
+  // Auth listener removed in favor of AuthContext
 
   useEffect(() => {
     if (view === 'admin' && isAdmin) void fetchAdminBusinesses();
@@ -2799,7 +2697,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
     void fetchCategories();
     void fetchSubcategories();
     void fetchLocations();
-    void fetchGuideSettings(); // Carrega as configurações do guia ao iniciar o app
+    // void fetchGuideSettings(); removed
   }, []);
 
   useEffect(() => {
@@ -2812,7 +2710,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
       if (adminTab === 'photos') void fetchPhotos();
       if (adminTab === 'businesses') void fetchAdminTaxonomies();
       if (adminTab === 'events') void fetchEvents();
-      if (adminTab === 'guide') void fetchGuideSettings();
+      if (adminTab === 'guide') void refreshGuide();
     }
   }, [view, isAdmin, adminTab]);
 
@@ -2844,25 +2742,25 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
               <form onSubmit={handleLogin} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Email</label>
-                  <input 
-                    type="email" 
-                    className="w-full border rounded px-3 py-2" 
-                    value={email} 
-                    onChange={(e) => setEmail(e.target.value)} 
+                  <input
+                    type="email"
+                    className="w-full border rounded px-3 py-2"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Senha</label>
-                  <input 
-                    type="password" 
-                    className="w-full border rounded px-3 py-2" 
-                    value={password} 
-                    onChange={(e) => setPassword(e.target.value)} 
+                  <input
+                    type="password"
+                    className="w-full border rounded px-3 py-2"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                   />
                 </div>
                 {authError && <p className="text-red-600 text-sm">{authError}</p>}
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   disabled={authLoading}
                   className="w-full bg-cyan-700 text-white py-2 rounded disabled:opacity-50"
                 >
@@ -2877,13 +2775,13 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
               <div className="flex flex-wrap gap-4 items-center justify-between">
                 <h2 className="text-xl font-bold">Painel Administrativo</h2>
                 <div className="flex gap-2">
-                  <button 
+                  <button
                     onClick={handleLogout}
                     className="bg-red-600 text-white px-4 py-2 rounded"
                   >
                     Sair
                   </button>
-                  <button 
+                  <button
                     onClick={() => setView('none')}
                     className="bg-gray-600 text-white px-4 py-2 rounded"
                   >
@@ -2900,15 +2798,14 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
 
             <div className="bg-white rounded-lg shadow p-4 mb-6">
               <div className="flex flex-wrap gap-2">
-                {(['businesses','events','phones','useful','history','photos','carousel','categories','comoChegar','guide','plans'] as const).map(tab => (
+                {(['businesses', 'events', 'phones', 'useful', 'history', 'photos', 'carousel', 'categories', 'comoChegar', 'guide', 'plans'] as const).map(tab => (
                   <button
                     key={tab}
                     onClick={() => setAdminTab(tab)}
-                    className={`px-4 py-2 rounded ${
-                      adminTab === tab 
-                        ? 'bg-cyan-700 text-white' 
-                        : 'bg-gray-100 text-gray-700'
-                    }`}
+                    className={`px-4 py-2 rounded ${adminTab === tab
+                      ? 'bg-cyan-700 text-white'
+                      : 'bg-gray-100 text-gray-700'
+                      }`}
                   >
                     {tab === 'businesses' && 'Cadastros'}
                     {tab === 'events' && 'Eventos'}
@@ -2940,11 +2837,10 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
                               <h4 className="font-medium">{b.name}</h4>
-                              <span className={`text-xs px-2 py-0.5 rounded ${
-                                b.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
-                                b.status === 'approved' ? 'bg-green-100 text-green-800' : 
-                                'bg-red-100 text-red-800'
-                              }`}>
+                              <span className={`text-xs px-2 py-0.5 rounded ${b.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                b.status === 'approved' ? 'bg-green-100 text-green-800' :
+                                  'bg-red-100 text-red-800'
+                                }`}>
                                 {b.status}
                               </span>
                             </div>
@@ -2952,16 +2848,16 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                             <p className="text-xs text-gray-500">Plano: {!b.plan ? '—' : b.plan === 'anual' ? 'Anual' : b.plan === 'semestral' ? 'Semestral' : String(b.plan)}</p>
                           </div>
                           <div className="flex items-center gap-2">
-                            <button 
-                              onClick={() => approveBusiness(b.id)} 
-                              disabled={b.status === 'approved'} 
+                            <button
+                              onClick={() => approveBusiness(b.id)}
+                              disabled={b.status === 'approved'}
                               className="bg-green-600 disabled:opacity-50 text-white px-3 py-1.5 rounded"
                             >
                               Aprovar
                             </button>
-                            <button 
-                              onClick={() => rejectBusiness(b.id)} 
-                              disabled={b.status === 'rejected'} 
+                            <button
+                              onClick={() => rejectBusiness(b.id)}
+                              disabled={b.status === 'rejected'}
                               className="bg-red-600 disabled:opacity-50 text-white px-3 py-1.5 rounded"
                             >
                               Reprovar
@@ -2973,16 +2869,16 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                             >
                               Enviar para Passeios
                             </button>
-                            <button 
+                            <button
                               onClick={async () => {
                                 setEditingId(b.id);
-                                setNewBiz({ 
-                                  name: b.name, 
-                                  category: b.category, 
-                                  description: (b as any).description, 
-                                  address: (b as any).address, 
-                                  phone: (b as any).phone, 
-                                  whatsapp: (b as any).whatsapp, 
+                                setNewBiz({
+                                  name: b.name,
+                                  category: b.category,
+                                  description: (b as any).description,
+                                  address: (b as any).address,
+                                  phone: (b as any).phone,
+                                  whatsapp: (b as any).whatsapp,
                                   instagram: (b as any).instagram,
                                   tripadvisor: (b as any).tripadvisor,
                                   website: (b as any).website
@@ -2996,39 +2892,39 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                                 setFormLocationId(b.location_id || '');
                                 window.scrollTo({ top: 0, behavior: 'smooth' });
                                 await fetchEditReviews(b.id);
-                              }} 
+                              }}
                               className="bg-blue-600 text-white px-3 py-1.5 rounded"
                             >
                               Editar
                             </button>
-                            <button 
-                              onClick={async ()=>{ 
-                                if(!confirm('Excluir esta empresa?')) return; 
-                                
+                            <button
+                              onClick={async () => {
+                                if (!confirm('Excluir esta empresa?')) return;
+
                                 try {
                                   // Primeiro, deletar o telefone correspondente da phone_directory
                                   const { error: phoneError } = await supabase
                                     .from('phone_directory')
                                     .delete()
                                     .eq('name', b.name);
-                                  
+
                                   if (phoneError) {
                                     console.warn('Erro ao deletar telefone:', phoneError.message);
                                   }
-                                  
+
                                   // Depois, deletar a empresa
-                                  const { error } = await supabase.from('businesses').delete().eq('id', b.id); 
-                                  
-                                  if(error){ 
+                                  const { error } = await supabase.from('businesses').delete().eq('id', b.id);
+
+                                  if (error) {
                                     setAdminError(error.message);
-                                  } else { 
-                                    await fetchAdminBusinesses(); 
-                                    await fetchPublicBusinesses(); 
+                                  } else {
+                                    await fetchAdminBusinesses();
+                                    await fetchPublicBusinesses();
                                   }
                                 } catch (err: any) {
                                   setAdminError(err.message || 'Erro ao excluir empresa');
                                 }
-                              }} 
+                              }}
                               className="bg-gray-100 text-red-700 px-3 py-1.5 rounded"
                             >
                               Excluir
@@ -3044,24 +2940,24 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                   <form onSubmit={editingId ? updateBusiness : createBusiness} className="space-y-3">
                     <div>
                       <label className="block text-sm font-medium mb-1">Nome</label>
-                      <input 
-                        className="w-full border rounded px-3 py-2" 
-                        required 
-                        value={newBiz.name || ''} 
-                        onChange={(e) => setNewBiz((v) => ({ ...v, name: e.target.value }))} 
+                      <input
+                        className="w-full border rounded px-3 py-2"
+                        required
+                        value={newBiz.name || ''}
+                        onChange={(e) => setNewBiz((v) => ({ ...v, name: e.target.value }))}
                       />
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       <div className="space-y-6">
                         <label className="block text-sm font-medium mb-1">Categoria</label>
-                        <select 
-                          className="w-full border rounded px-3 py-2" 
-                          value={formCategoryId} 
-                          onChange={async (e) => { 
-                            const id = e.target.value; 
-                            setFormCategoryId(id); 
-                            setFormSubcategoryId(''); 
-                            await fetchSubcategories(id || undefined); 
+                        <select
+                          className="w-full border rounded px-3 py-2"
+                          value={formCategoryId}
+                          onChange={async (e) => {
+                            const id = e.target.value;
+                            setFormCategoryId(id);
+                            setFormSubcategoryId('');
+                            await fetchSubcategories(id || undefined);
                           }}
                         >
                           <option value="">Selecione</option>
@@ -3070,10 +2966,10 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                       </div>
                       <div className="space-y-6">
                         <label className="block text-sm font-medium mb-1">Subcategoria</label>
-                        <select 
-                          className="w-full border rounded px-3 py-2" 
-                          value={formSubcategoryId} 
-                          onChange={(e) => setFormSubcategoryId(e.target.value)} 
+                        <select
+                          className="w-full border rounded px-3 py-2"
+                          value={formSubcategoryId}
+                          onChange={(e) => setFormSubcategoryId(e.target.value)}
                           disabled={!formCategoryId}
                         >
                           <option value="">Selecione</option>
@@ -3084,9 +2980,9 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                       </div>
                       <div>
                         <label className="block text-sm font-medium mb-1">Local</label>
-                        <select 
-                          className="w-full border rounded px-3 py-2" 
-                          value={formLocationId} 
+                        <select
+                          className="w-full border rounded px-3 py-2"
+                          value={formLocationId}
                           onChange={(e) => setFormLocationId(e.target.value)}
                         >
                           <option value="">Selecione</option>
@@ -3096,19 +2992,19 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                     </div>
                     <div>
                       <label className="block text-sm font-medium mb-1">Descrição</label>
-                      <textarea 
-                        className="w-full border rounded px-3 py-2" 
-                        rows={3} 
-                        value={newBiz.description || ''} 
-                        onChange={(e) => setNewBiz((v) => ({ ...v, description: e.target.value }))} 
+                      <textarea
+                        className="w-full border rounded px-3 py-2"
+                        rows={3}
+                        value={newBiz.description || ''}
+                        onChange={(e) => setNewBiz((v) => ({ ...v, description: e.target.value }))}
                       />
                     </div>
                     <div>
                       <label className="block text-sm font-medium mb-1">Fotos (até 5 imagens, max. {MAX_FILE_MB}MB cada)</label>
-                      <input 
-                        type="file" 
-                        accept="image/*" 
-                        multiple 
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
                         onChange={(e) => {
                           const files: File[] = e.target.files ? Array.from(e.target.files as FileList) : [];
                           const accepted: File[] = [];
@@ -3121,8 +3017,8 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                           }
                           setNewBizFiles(accepted);
                           setNewBizPreviews(previews);
-                        }} 
-                        className="w-full border rounded px-3 py-2" 
+                        }}
+                        className="w-full border rounded px-3 py-2"
                       />
                       {newBizPreviews.length > 0 && (
                         <div className="mt-2 grid grid-cols-3 gap-2">
@@ -3136,9 +3032,9 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                     </div>
                     <div>
                       <label className="block text-sm font-medium mb-1">Logomarca (1 imagem, max. {MAX_FILE_MB}MB)</label>
-                      <input 
-                        type="file" 
-                        accept="image/*" 
+                      <input
+                        type="file"
+                        accept="image/*"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file && file.size <= MAX_FILE_MB * 1024 * 1024) {
@@ -3147,8 +3043,8 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                           } else if (file) {
                             alert(`Arquivo muito grande. Máximo ${MAX_FILE_MB}MB.`);
                           }
-                        }} 
-                        className="w-full border rounded px-3 py-2" 
+                        }}
+                        className="w-full border rounded px-3 py-2"
                       />
                       {logoPreview && (
                         <div className="mt-2">
@@ -3161,87 +3057,87 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-sm font-medium mb-1">Endereço</label>
-                        <input 
-                          className="w-full border rounded px-3 py-2" 
-                          value={newBiz.address || ''} 
-                          onChange={(e) => setNewBiz((v) => ({ ...v, address: e.target.value }))} 
+                        <input
+                          className="w-full border rounded px-3 py-2"
+                          value={newBiz.address || ''}
+                          onChange={(e) => setNewBiz((v) => ({ ...v, address: e.target.value }))}
                         />
                       </div>
                       <div>
                         <label className="block text-sm font-medium mb-1">Telefone</label>
-                        <input 
-                          className="w-full border rounded px-3 py-2" 
-                          value={newBiz.phone || ''} 
-                          onChange={(e) => setNewBiz((v) => ({ ...v, phone: e.target.value }))} 
+                        <input
+                          className="w-full border rounded px-3 py-2"
+                          value={newBiz.phone || ''}
+                          onChange={(e) => setNewBiz((v) => ({ ...v, phone: e.target.value }))}
                         />
                       </div>
                       <div>
                         <label className="block text-sm font-medium mb-1">WhatsApp</label>
-                        <input 
-                          className="w-full border rounded px-3 py-2" 
-                          value={newBiz.whatsapp || ''} 
-                          onChange={(e) => setNewBiz((v) => ({ ...v, whatsapp: e.target.value }))} 
+                        <input
+                          className="w-full border rounded px-3 py-2"
+                          value={newBiz.whatsapp || ''}
+                          onChange={(e) => setNewBiz((v) => ({ ...v, whatsapp: e.target.value }))}
                         />
                       </div>
                       <div>
                         <label className="block text-sm font-medium mb-1">Instagram</label>
-                        <input 
-                          className="w-full border rounded px-3 py-2" 
-                          value={newBiz.instagram || ''} 
-                          onChange={(e) => setNewBiz((v) => ({ ...v, instagram: e.target.value }))} 
+                        <input
+                          className="w-full border rounded px-3 py-2"
+                          value={newBiz.instagram || ''}
+                          onChange={(e) => setNewBiz((v) => ({ ...v, instagram: e.target.value }))}
                         />
                       </div>
                       <div>
                         <label className="block text-sm font-medium mb-1">TripAdvisor</label>
-                        <input 
-                          className="w-full border rounded px-3 py-2" 
-                          placeholder="URL do TripAdvisor (opcional)" 
-                          value={newBiz.tripadvisor || ''} 
-                          onChange={(e) => setNewBiz((v) => ({ ...v, tripadvisor: e.target.value }))} 
+                        <input
+                          className="w-full border rounded px-3 py-2"
+                          placeholder="URL do TripAdvisor (opcional)"
+                          value={newBiz.tripadvisor || ''}
+                          onChange={(e) => setNewBiz((v) => ({ ...v, tripadvisor: e.target.value }))}
                         />
                       </div>
                       <div>
                         <label className="block text-sm font-medium mb-1">Website</label>
-                        <input 
-                          className="w-full border rounded px-3 py-2" 
-                          placeholder="https://exemplo.com" 
-                          value={newBiz.website || ''} 
-                          onChange={(e) => setNewBiz((v) => ({ ...v, website: e.target.value }))} 
+                        <input
+                          className="w-full border rounded px-3 py-2"
+                          placeholder="https://exemplo.com"
+                          value={newBiz.website || ''}
+                          onChange={(e) => setNewBiz((v) => ({ ...v, website: e.target.value }))}
                         />
                       </div>
                       <div className="md:col-span-2">
                         <label className="block text-sm font-medium mb-1">Tags (separe por virgula)</label>
-                        <input 
-                          className="w-full border rounded px-3 py-2" 
-                          placeholder="ex.: familiar, pet friendly, música ao vivo" 
-                          value={newBizTags} 
-                          onChange={(e) => setNewBizTags(e.target.value)} 
+                        <input
+                          className="w-full border rounded px-3 py-2"
+                          placeholder="ex.: familiar, pet friendly, música ao vivo"
+                          value={newBizTags}
+                          onChange={(e) => setNewBizTags(e.target.value)}
                         />
                       </div>
                     </div>
                     {adminError && <p className="text-red-600 text-sm">{adminError}</p>}
                     <div className="flex gap-2">
-                      <button 
-                        type="submit" 
-                        disabled={saving} 
+                      <button
+                        type="submit"
+                        disabled={saving}
                         className="flex-1 bg-cyan-700 text-white px-3 py-2 rounded disabled:opacity-50"
                       >
                         {saving ? (editingId ? 'Atualizando...' : 'Salvando...') : (editingId ? 'Atualizar' : 'Salvar')}
                       </button>
                       {editingId && (
-                        <button 
-                          type="button" 
-                          onClick={() => { 
-                            setEditingId(null); 
-                            setNewBiz({ name: '', category: '', description: '', address: '', phone: '', whatsapp: '', instagram: '', tripadvisor: '', website: '' }); 
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingId(null);
+                            setNewBiz({ name: '', category: '', description: '', address: '', phone: '', whatsapp: '', instagram: '', tripadvisor: '', website: '' });
                             setNewBizTags('');
-                            setNewBizFiles([]); 
-                            setNewBizPreviews([]); 
+                            setNewBizFiles([]);
+                            setNewBizPreviews([]);
                             setFormCategoryId('');
                             setFormSubcategoryId('');
                             setFormLocationId('');
-                            setAdminError(null); 
-                          }} 
+                            setAdminError(null);
+                          }}
                           className="px-3 py-2 rounded bg-gray-200"
                         >
                           Cancelar
@@ -3255,7 +3151,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                       <div className="flex items-center justify-between mb-3">
                         <h4 className="font-semibold">Avaliações deste cadastro</h4>
                         <button
-                          onClick={async ()=>{ await fetchEditReviews(editingId); }}
+                          onClick={async () => { await fetchEditReviews(editingId); }}
                           className="text-sm bg-white border px-3 py-1.5 rounded"
                         >
                           Recarregar
@@ -3270,7 +3166,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                           {editReviews.length === 0 ? (
                             <p className="text-sm text-gray-600">Sem avaliações.</p>
                           ) : (
-                            editReviews.map((r:any) => (
+                            editReviews.map((r: any) => (
                               <div key={r.id} className="border rounded p-2 flex items-start justify-between gap-3">
                                 <div>
                                   <div className="flex items-center gap-2 text-sm">
@@ -3301,7 +3197,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                     <p className="text-gray-600 text-sm">Nenhum item cadastrado.</p>
                   ) : (
                     <div className="space-y-3">
-                      {toursAdmin.map((it:any) => (
+                      {toursAdmin.map((it: any) => (
                         <div key={it.id} className="border rounded p-3 flex items-start justify-between gap-4">
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
@@ -3310,7 +3206,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                             </div>
                             {Array.isArray(it.bullets) && it.bullets.length > 0 && (
                               <ul className="list-disc list-inside text-sm text-gray-700">
-                                {it.bullets.slice(0,3).map((b:string, idx:number) => <li key={idx} className="truncate">{b}</li>)}
+                                {it.bullets.slice(0, 3).map((b: string, idx: number) => <li key={idx} className="truncate">{b}</li>)}
                                 {it.bullets.length > 3 && <li className="text-gray-500">...</li>}
                               </ul>
                             )}
@@ -3327,11 +3223,11 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                 <div className="bg-white rounded-lg shadow p-4">
                   <h3 className="font-semibold mb-4">{toursEditingId ? 'Editar item' : 'Novo item'}</h3>
                   <form onSubmit={toursEditingId ? updateTourSection : createTourSection} className="space-y-3">
-                    <input className="w-full border rounded px-3 py-2" placeholder="Título" value={toursForm.title} onChange={e=>setToursForm(v=>({...v,title:e.target.value}))} required />
-                    <textarea className="w-full border rounded px-3 py-2" rows={5} placeholder="Uma linha por bullet" value={toursForm.bullets} onChange={e=>setToursForm(v=>({...v,bullets:e.target.value}))} />
-                    <input className="w-full border rounded px-3 py-2" placeholder="URL da imagem (opcional)" value={toursForm.image_url} onChange={e=>setToursForm(v=>({...v,image_url:e.target.value}))} />
+                    <input className="w-full border rounded px-3 py-2" placeholder="Título" value={toursForm.title} onChange={e => setToursForm(v => ({ ...v, title: e.target.value }))} required />
+                    <textarea className="w-full border rounded px-3 py-2" rows={5} placeholder="Uma linha por bullet" value={toursForm.bullets} onChange={e => setToursForm(v => ({ ...v, bullets: e.target.value }))} />
+                    <input className="w-full border rounded px-3 py-2" placeholder="URL da imagem (opcional)" value={toursForm.image_url} onChange={e => setToursForm(v => ({ ...v, image_url: e.target.value }))} />
                     <div>
-                      <input type="file" accept="image/*" onChange={(e)=>{ const f=e.target.files?.[0]||null; setToursImageFile(f||null); setToursImagePreview(f? URL.createObjectURL(f):''); }} className="w-full border rounded px-3 py-2" />
+                      <input type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0] || null; setToursImageFile(f || null); setToursImagePreview(f ? URL.createObjectURL(f) : ''); }} className="w-full border rounded px-3 py-2" />
                       {(toursImagePreview || toursForm.image_url) && (
                         <div className="mt-2">
                           <img src={toursImagePreview || toursForm.image_url} alt="Preview" className="w-full h-32 object-cover rounded" />
@@ -3339,19 +3235,19 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                       )}
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                      <input className="w-full border rounded px-3 py-2" placeholder="Texto do CTA (opcional)" value={toursForm.cta_text} onChange={e=>setToursForm(v=>({...v,cta_text:e.target.value}))} />
-                      <input className="w-full border rounded px-3 py-2" placeholder="URL do CTA (opcional)" value={toursForm.cta_url} onChange={e=>setToursForm(v=>({...v,cta_url:e.target.value}))} />
-                      <input type="number" className="w-full border rounded px-3 py-2" placeholder="Ordem" value={toursForm.sort_order} onChange={e=>setToursForm(v=>({...v,sort_order:Number(e.target.value)}))} />
+                      <input className="w-full border rounded px-3 py-2" placeholder="Texto do CTA (opcional)" value={toursForm.cta_text} onChange={e => setToursForm(v => ({ ...v, cta_text: e.target.value }))} />
+                      <input className="w-full border rounded px-3 py-2" placeholder="URL do CTA (opcional)" value={toursForm.cta_url} onChange={e => setToursForm(v => ({ ...v, cta_url: e.target.value }))} />
+                      <input type="number" className="w-full border rounded px-3 py-2" placeholder="Ordem" value={toursForm.sort_order} onChange={e => setToursForm(v => ({ ...v, sort_order: Number(e.target.value) }))} />
                     </div>
                     <label className="inline-flex items-center gap-2 text-sm">
-                      <input type="checkbox" checked={toursForm.visible} onChange={e=>setToursForm(v=>({...v,visible:e.target.checked}))} />
+                      <input type="checkbox" checked={toursForm.visible} onChange={e => setToursForm(v => ({ ...v, visible: e.target.checked }))} />
                       Visível
                     </label>
                     {toursAdminError && <p className="text-red-600 text-sm">{toursAdminError}</p>}
                     <div className="flex gap-2">
                       <button type="submit" className="flex-1 bg-cyan-700 text-white px-3 py-2 rounded">{toursEditingId ? 'Atualizar' : 'Salvar'}</button>
                       {toursEditingId && (
-                        <button type="button" onClick={()=>{ setToursEditingId(null); setToursForm({ title: '', bullets: '', image_url: '', cta_text: '', cta_url: '', visible: true, sort_order: 0 }); setToursImageFile(null); setToursImagePreview(''); setToursAdminError(null); }} className="px-3 py-2 rounded bg-gray-200">Cancelar</button>
+                        <button type="button" onClick={() => { setToursEditingId(null); setToursForm({ title: '', bullets: '', image_url: '', cta_text: '', cta_url: '', visible: true, sort_order: 0 }); setToursImageFile(null); setToursImagePreview(''); setToursAdminError(null); }} className="px-3 py-2 rounded bg-gray-200">Cancelar</button>
                       )}
                     </div>
                   </form>
@@ -3397,41 +3293,41 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                 <div className="bg-white rounded-lg shadow p-4">
                   <h3 className="font-semibold mb-4">{eventEditingId ? 'Editar Evento' : 'Novo Evento'}</h3>
                   <form onSubmit={eventEditingId ? updateEvent : createEvent} className="space-y-3">
-                    <input className="w-full border rounded px-3 py-2" placeholder="Título" value={eventForm.title} onChange={e=>setEventForm(v=>({...v,title:e.target.value}))} required />
+                    <input className="w-full border rounded px-3 py-2" placeholder="Título" value={eventForm.title} onChange={e => setEventForm(v => ({ ...v, title: e.target.value }))} required />
                     <div className="grid grid-cols-2 gap-2">
-                      <input type="date" className="w-full border rounded px-3 py-2" value={eventForm.date} onChange={e=>setEventForm(v=>({...v,date:e.target.value}))} required />
-                      <input type="time" className="w-full border rounded px-3 py-2" value={eventForm.time} onChange={e=>setEventForm(v=>({...v,time:e.target.value}))} />
+                      <input type="date" className="w-full border rounded px-3 py-2" value={eventForm.date} onChange={e => setEventForm(v => ({ ...v, date: e.target.value }))} required />
+                      <input type="time" className="w-full border rounded px-3 py-2" value={eventForm.time} onChange={e => setEventForm(v => ({ ...v, time: e.target.value }))} />
                     </div>
-                    <select className="w-full border rounded px-3 py-2" value={eventForm.location_id} onChange={e=>setEventForm(v=>({...v,location_id:e.target.value}))}>
+                    <select className="w-full border rounded px-3 py-2" value={eventForm.location_id} onChange={e => setEventForm(v => ({ ...v, location_id: e.target.value }))}>
                       <option value="">Sem local</option>
-                      {locations.map(l=> <option key={l.id} value={l.id}>{l.name}</option>)}
+                      {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                     </select>
-                    <input className="w-full border rounded px-3 py-2" placeholder="Local (texto)" value={eventForm.local_text} onChange={e=>setEventForm(v=>({...v,local_text:e.target.value}))} />
-                    <textarea className="w-full border rounded px-3 py-2" placeholder="Descrição" value={eventForm.description} onChange={e=>setEventForm(v=>({...v,description:e.target.value}))} rows={4} />
+                    <input className="w-full border rounded px-3 py-2" placeholder="Local (texto)" value={eventForm.local_text} onChange={e => setEventForm(v => ({ ...v, local_text: e.target.value }))} />
+                    <textarea className="w-full border rounded px-3 py-2" placeholder="Descrição" value={eventForm.description} onChange={e => setEventForm(v => ({ ...v, description: e.target.value }))} rows={4} />
                     <div>
                       <label className="block text-sm font-medium mb-1">Banner do evento (upload opcional)</label>
-                      <input type="file" accept="image/*" className="w-full border rounded px-3 py-2" onChange={(e)=>{ const f=e.target.files?.[0]||null; setEventBannerFile(f); setEventBannerPreview(f ? URL.createObjectURL(f) : ''); }} />
+                      <input type="file" accept="image/*" className="w-full border rounded px-3 py-2" onChange={(e) => { const f = e.target.files?.[0] || null; setEventBannerFile(f); setEventBannerPreview(f ? URL.createObjectURL(f) : ''); }} />
                       {eventBannerPreview && <img src={eventBannerPreview} alt="Preview banner" className="mt-2 w-full h-32 object-cover rounded" />}
                     </div>
-                    <input className="w-full border rounded px-3 py-2" placeholder="URL do ingresso (opcional)" value={eventForm.link} onChange={e=>setEventForm(v=>({...v,link:e.target.value}))} />
-                    <input className="w-full border rounded px-3 py-2" placeholder="URL do Instagram (opcional)" value={eventForm.instagram_url} onChange={e=>setEventForm(v=>({...v,instagram_url:e.target.value}))} />
-                    <input className="w-full border rounded px-3 py-2" placeholder="URL do Facebook (opcional)" value={eventForm.facebook_url} onChange={e=>setEventForm(v=>({...v,facebook_url:e.target.value}))} />
+                    <input className="w-full border rounded px-3 py-2" placeholder="URL do ingresso (opcional)" value={eventForm.link} onChange={e => setEventForm(v => ({ ...v, link: e.target.value }))} />
+                    <input className="w-full border rounded px-3 py-2" placeholder="URL do Instagram (opcional)" value={eventForm.instagram_url} onChange={e => setEventForm(v => ({ ...v, instagram_url: e.target.value }))} />
+                    <input className="w-full border rounded px-3 py-2" placeholder="URL do Facebook (opcional)" value={eventForm.facebook_url} onChange={e => setEventForm(v => ({ ...v, facebook_url: e.target.value }))} />
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-4">
                         <label className="flex items-center gap-2 text-sm">
-                          <input type="checkbox" checked={eventForm.visible} onChange={e=>setEventForm(v=>({...v,visible:e.target.checked}))} />
+                          <input type="checkbox" checked={eventForm.visible} onChange={e => setEventForm(v => ({ ...v, visible: e.target.checked }))} />
                           Visível
                         </label>
                         <label className="flex items-center gap-2 text-sm">
-                          <input type="checkbox" checked={eventForm.is_pinned} onChange={e=>setEventForm(v=>({...v,is_pinned:e.target.checked}))} />
+                          <input type="checkbox" checked={eventForm.is_pinned} onChange={e => setEventForm(v => ({ ...v, is_pinned: e.target.checked }))} />
                           Fixar evento
                         </label>
                       </div>
-                      <input type="number" className="w-28 border rounded px-3 py-2" placeholder="Ordem" value={eventForm.sort_order} onChange={e=>setEventForm(v=>({...v,sort_order:Number(e.target.value||0)}))} />
+                      <input type="number" className="w-28 border rounded px-3 py-2" placeholder="Ordem" value={eventForm.sort_order} onChange={e => setEventForm(v => ({ ...v, sort_order: Number(e.target.value || 0) }))} />
                     </div>
                     <div className="flex gap-2">
                       <button type="submit" className="bg-cyan-700 text-white px-4 py-2 rounded">{eventEditingId ? 'Salvar' : 'Adicionar'}</button>
-                      {eventEditingId && <button type="button" onClick={()=>{ setEventEditingId(null); setEventForm({ title:'', date:'', time:'', location_id:'', description:'', banner_url:'', link:'', visible:true, is_pinned:false, sort_order:0 }); setEventBannerFile(null); setEventBannerPreview(''); }} className="bg-gray-100 px-4 py-2 rounded">Cancelar</button>}
+                      {eventEditingId && <button type="button" onClick={() => { setEventEditingId(null); setEventForm({ title: '', date: '', time: '', location_id: '', local_text: '', description: '', banner_url: '', link: '', instagram_url: '', facebook_url: '', visible: true, is_pinned: false, sort_order: 0 }); setEventBannerFile(null); setEventBannerPreview(''); }} className="bg-gray-100 px-4 py-2 rounded">Cancelar</button>}
                     </div>
                   </form>
                 </div>
@@ -3443,15 +3339,15 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
                     <div>
                       <label className="block text-sm font-medium mb-1">Categoria</label>
-                      <select 
-                        className="w-full border rounded px-3 py-2" 
-                        value={phoneFilterCatId} 
-                        onChange={async (e) => { 
-                          const id = e.target.value; 
-                          setPhoneFilterCatId(id); 
-                          setPhoneFilterSubId(''); 
-                          await fetchSubcategories(id || undefined); 
-                          await fetchPhones(); 
+                      <select
+                        className="w-full border rounded px-3 py-2"
+                        value={phoneFilterCatId}
+                        onChange={async (e) => {
+                          const id = e.target.value;
+                          setPhoneFilterCatId(id);
+                          setPhoneFilterSubId('');
+                          await fetchSubcategories(id || undefined);
+                          await fetchPhones();
                         }}
                       >
                         <option value="">Todas</option>
@@ -3460,13 +3356,13 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                     </div>
                     <div>
                       <label className="block text-sm font-medium mb-1">Subcategoria</label>
-                      <select 
-                        className="w-full border rounded px-3 py-2" 
-                        value={phoneFilterSubId} 
-                        onChange={async (e) => { 
-                          setPhoneFilterSubId(e.target.value); 
-                          await fetchPhones(); 
-                        }} 
+                      <select
+                        className="w-full border rounded px-3 py-2"
+                        value={phoneFilterSubId}
+                        onChange={async (e) => {
+                          setPhoneFilterSubId(e.target.value);
+                          await fetchPhones();
+                        }}
                         disabled={!phoneFilterCatId}
                       >
                         <option value="">Todas</option>
@@ -3476,13 +3372,13 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                       </select>
                     </div>
                     <div className="flex items-end">
-                      <button 
-                        onClick={async ()=>{ 
-                          setPhoneFilterCatId(''); 
-                          setPhoneFilterSubId(''); 
-                          await fetchSubcategories(); 
-                          await fetchPhones(); 
-                        }} 
+                      <button
+                        onClick={async () => {
+                          setPhoneFilterCatId('');
+                          setPhoneFilterSubId('');
+                          await fetchSubcategories();
+                          await fetchPhones();
+                        }}
                         className="w-full md:w-auto bg-white border px-3 py-2 rounded hover:bg-gray-50"
                       >
                         Limpar
@@ -3505,7 +3401,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                           </div>
                           <div className="flex items-center gap-2">
                             <button onClick={() => editPhone(r)} className="bg-blue-600 text-white px-3 py-1.5 rounded">Editar</button>
-                            <button onClick={() => togglePhoneVisible(r)} className="bg-gray-100 text-gray-800 px-3 py-1.5 rounded">{r.visible?'Ocultar':'Mostrar'}</button>
+                            <button onClick={() => togglePhoneVisible(r)} className="bg-gray-100 text-gray-800 px-3 py-1.5 rounded">{r.visible ? 'Ocultar' : 'Mostrar'}</button>
                             <button onClick={() => deletePhone(r.id)} className="bg-red-600 text-white px-3 py-1.5 rounded">Excluir</button>
                           </div>
                         </div>
@@ -3519,41 +3415,41 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                   <form onSubmit={savePhone} className="space-y-3">
                     <div>
                       <label className="block text-sm font-medium mb-1">Nome</label>
-                      <input 
-                        className="w-full border rounded px-3 py-2" 
-                        required 
-                        value={phoneForm.name} 
-                        onChange={(e)=>setPhoneForm(v=>({...v, name: e.target.value}))} 
+                      <input
+                        className="w-full border rounded px-3 py-2"
+                        required
+                        value={phoneForm.name}
+                        onChange={(e) => setPhoneForm(v => ({ ...v, name: e.target.value }))}
                       />
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-sm font-medium mb-1">Telefone</label>
-                        <input 
-                          className="w-full border rounded px-3 py-2" 
-                          value={phoneForm.phone} 
-                          onChange={(e)=>setPhoneForm(v=>({...v, phone: e.target.value}))} 
+                        <input
+                          className="w-full border rounded px-3 py-2"
+                          value={phoneForm.phone}
+                          onChange={(e) => setPhoneForm(v => ({ ...v, phone: e.target.value }))}
                         />
                       </div>
                       <div>
                         <label className="block text-sm font-medium mb-1">WhatsApp</label>
-                        <input 
-                          className="w-full border rounded px-3 py-2" 
-                          value={phoneForm.whatsapp} 
-                          onChange={(e)=>setPhoneForm(v=>({...v, whatsapp: e.target.value}))} 
+                        <input
+                          className="w-full border rounded px-3 py-2"
+                          value={phoneForm.whatsapp}
+                          onChange={(e) => setPhoneForm(v => ({ ...v, whatsapp: e.target.value }))}
                         />
                       </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-sm font-medium mb-1">Categoria</label>
-                        <select 
-                          className="w-full border rounded px-3 py-2" 
-                          value={phoneForm.category_id} 
-                          onChange={async (e)=>{ 
-                            const id = e.target.value; 
-                            setPhoneForm(v=>({...v, category_id: id, subcategory_id: ''})); 
-                            await fetchSubcategories(id || undefined); 
+                        <select
+                          className="w-full border rounded px-3 py-2"
+                          value={phoneForm.category_id}
+                          onChange={async (e) => {
+                            const id = e.target.value;
+                            setPhoneForm(v => ({ ...v, category_id: id, subcategory_id: '' }));
+                            await fetchSubcategories(id || undefined);
                           }}
                         >
                           <option value="">Nenhuma</option>
@@ -3562,10 +3458,10 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                       </div>
                       <div>
                         <label className="block text-sm font-medium mb-1">Subcategoria</label>
-                        <select 
-                          className="w-full border rounded px-3 py-2" 
-                          value={phoneForm.subcategory_id} 
-                          onChange={(e)=>setPhoneForm(v=>({...v, subcategory_id: e.target.value}))} 
+                        <select
+                          className="w-full border rounded px-3 py-2"
+                          value={phoneForm.subcategory_id}
+                          onChange={(e) => setPhoneForm(v => ({ ...v, subcategory_id: e.target.value }))}
                           disabled={!phoneForm.category_id}
                         >
                           <option value="">Nenhuma</option>
@@ -3576,26 +3472,26 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <input 
-                        id="phoneVisible" 
-                        type="checkbox" 
-                        checked={phoneForm.visible} 
-                        onChange={(e)=>setPhoneForm(v=>({...v, visible: e.target.checked}))} 
+                      <input
+                        id="phoneVisible"
+                        type="checkbox"
+                        checked={phoneForm.visible}
+                        onChange={(e) => setPhoneForm(v => ({ ...v, visible: e.target.checked }))}
                       />
                       <label htmlFor="phoneVisible" className="text-sm">Visível</label>
                     </div>
                     <div className="flex gap-2">
-                      <button 
-                        type="submit" 
-                        disabled={phoneLoading} 
+                      <button
+                        type="submit"
+                        disabled={phoneLoading}
                         className="flex-1 bg-cyan-700 text-white px-3 py-2 rounded disabled:opacity-50"
                       >
                         {phoneLoading ? (phoneEditingId ? 'Atualizando...' : 'Salvando...') : (phoneEditingId ? 'Atualizar' : 'Salvar')}
                       </button>
                       {phoneEditingId && (
-                        <button 
-                          type="button" 
-                          onClick={resetPhoneForm} 
+                        <button
+                          type="button"
+                          onClick={resetPhoneForm}
                           className="px-3 py-2 rounded bg-gray-200"
                         >
                           Cancelar
@@ -3614,7 +3510,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                   ) : (
                     <div className="space-y-3">
                       {usefulRows.length === 0 && <p className="text-sm text-gray-600">Nenhum item.</p>}
-                      {usefulRows.map((r)=> (
+                      {usefulRows.map((r) => (
                         <div key={r.id} className="border rounded p-3 flex items-center justify-between gap-4">
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
@@ -3624,9 +3520,9 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                             <p className="text-sm text-gray-600 whitespace-pre-wrap">{r.body}</p>
                           </div>
                           <div className="flex items-center gap-2">
-                            <button onClick={()=>editUseful(r)} className="bg-blue-600 text-white px-3 py-1.5 rounded">Editar</button>
-                            <button onClick={()=>toggleUsefulVisible(r)} className="bg-gray-100 text-gray-800 px-3 py-1.5 rounded">{r.visible?'Ocultar':'Mostrar'}</button>
-                            <button onClick={()=>deleteUseful(r.id)} className="bg-red-600 text-white px-3 py-1.5 rounded">Excluir</button>
+                            <button onClick={() => editUseful(r)} className="bg-blue-600 text-white px-3 py-1.5 rounded">Editar</button>
+                            <button onClick={() => toggleUsefulVisible(r)} className="bg-gray-100 text-gray-800 px-3 py-1.5 rounded">{r.visible ? 'Ocultar' : 'Mostrar'}</button>
+                            <button onClick={() => deleteUseful(r.id)} className="bg-red-600 text-white px-3 py-1.5 rounded">Excluir</button>
                           </div>
                         </div>
                       ))}
@@ -3639,54 +3535,54 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                   <form onSubmit={saveUseful} className="space-y-3">
                     <div>
                       <label className="block text-sm font-medium mb-1">Título</label>
-                      <input 
-                        className="w-full border rounded px-3 py-2" 
-                        required 
-                        value={usefulForm.title} 
-                        onChange={(e)=>setUsefulForm(v=>({...v, title: e.target.value}))} 
+                      <input
+                        className="w-full border rounded px-3 py-2"
+                        required
+                        value={usefulForm.title}
+                        onChange={(e) => setUsefulForm(v => ({ ...v, title: e.target.value }))}
                       />
                     </div>
                     <div>
                       <label className="block text-sm font-medium mb-1">Texto</label>
-                      <textarea 
-                        className="w-full border rounded px-3 py-2" 
-                        rows={4} 
-                        value={usefulForm.body} 
-                        onChange={(e)=>setUsefulForm(v=>({...v, body: e.target.value}))} 
+                      <textarea
+                        className="w-full border rounded px-3 py-2"
+                        rows={4}
+                        value={usefulForm.body}
+                        onChange={(e) => setUsefulForm(v => ({ ...v, body: e.target.value }))}
                       />
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="block text-sm font-medium mb-1">Ordem</label>
-                        <input 
-                          type="number" 
-                          className="w-full border rounded px-3 py-2" 
-                          value={usefulForm.sort_order} 
-                          onChange={(e)=>setUsefulForm(v=>({...v, sort_order: Number(e.target.value||0)}))} 
+                        <input
+                          type="number"
+                          className="w-full border rounded px-3 py-2"
+                          value={usefulForm.sort_order}
+                          onChange={(e) => setUsefulForm(v => ({ ...v, sort_order: Number(e.target.value || 0) }))}
                         />
                       </div>
                       <div className="flex items-center gap-2 mt-6">
-                        <input 
-                          id="usefulVisible" 
-                          type="checkbox" 
-                          checked={usefulForm.visible} 
-                          onChange={(e)=>setUsefulForm(v=>({...v, visible: e.target.checked}))} 
+                        <input
+                          id="usefulVisible"
+                          type="checkbox"
+                          checked={usefulForm.visible}
+                          onChange={(e) => setUsefulForm(v => ({ ...v, visible: e.target.checked }))}
                         />
                         <label htmlFor="usefulVisible" className="text-sm">Visível</label>
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <button 
-                        type="submit" 
-                        disabled={usefulLoading} 
+                      <button
+                        type="submit"
+                        disabled={usefulLoading}
                         className="flex-1 bg-cyan-700 text-white px-3 py-2 rounded disabled:opacity-50"
                       >
                         {usefulLoading ? (usefulEditingId ? 'Atualizando...' : 'Salvando...') : (usefulEditingId ? 'Atualizar' : 'Salvar')}
                       </button>
                       {usefulEditingId && (
-                        <button 
-                          type="button" 
-                          onClick={resetUseful} 
+                        <button
+                          type="button"
+                          onClick={resetUseful}
                           className="px-3 py-2 rounded bg-gray-200"
                         >
                           Cancelar
@@ -3702,16 +3598,16 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                   <h3 className="font-semibold mb-4">Texto da História</h3>
                   <form onSubmit={saveHistoryBody} className="space-y-3">
                     <div>
-                      <textarea 
-                        className="w-full border rounded px-3 py-2" 
-                        rows={8} 
-                        value={historyBody} 
-                        onChange={(e)=>setHistoryBody(e.target.value)} 
+                      <textarea
+                        className="w-full border rounded px-3 py-2"
+                        rows={8}
+                        value={historyBody}
+                        onChange={(e) => setHistoryBody(e.target.value)}
                       />
                     </div>
-                    <button 
-                      type="submit" 
-                      disabled={historyLoading} 
+                    <button
+                      type="submit"
+                      disabled={historyLoading}
                       className="bg-cyan-700 text-white px-3 py-2 rounded disabled:opacity-50"
                     >
                       {historyLoading ? 'Salvando...' : 'Salvar'}
@@ -3725,36 +3621,36 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-sm font-medium mb-1">Legenda</label>
-                        <input 
-                          className="w-full border rounded px-3 py-2" 
-                          value={historyCaption} 
-                          onChange={(e)=>setHistoryCaption(e.target.value)} 
+                        <input
+                          className="w-full border rounded px-3 py-2"
+                          value={historyCaption}
+                          onChange={(e) => setHistoryCaption(e.target.value)}
                         />
                       </div>
                       {!historyEditingId && (
                         <div>
                           <label className="block text-sm font-medium mb-1">Imagem</label>
-                          <input 
-                            type="file" 
-                            accept="image/*" 
-                            onChange={(e)=>setHistoryFile(e.target.files?.[0] || null)} 
-                            className="w-full border rounded px-3 py-2" 
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => setHistoryFile(e.target.files?.[0] || null)}
+                            className="w-full border rounded px-3 py-2"
                           />
                         </div>
                       )}
                     </div>
                     <div className="flex gap-2">
-                      <button 
-                        type="submit" 
-                        disabled={historyLoading} 
+                      <button
+                        type="submit"
+                        disabled={historyLoading}
                         className="bg-cyan-700 text-white px-3 py-2 rounded disabled:opacity-50"
                       >
                         {historyEditingId ? (historyLoading ? 'Atualizando...' : 'Atualizar') : (historyLoading ? 'Enviando...' : 'Enviar')}
                       </button>
                       {historyEditingId && (
-                        <button 
-                          type="button" 
-                          onClick={()=>{ setHistoryEditingId(null); setHistoryCaption(''); }} 
+                        <button
+                          type="button"
+                          onClick={() => { setHistoryEditingId(null); setHistoryCaption(''); }}
                           className="px-3 py-2 rounded bg-gray-200"
                         >
                           Cancelar
@@ -3763,15 +3659,15 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                     </div>
                   </form>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {historyImages.map((it)=> (
+                    {historyImages.map((it) => (
                       <div key={it.id} className="border rounded p-3 flex items-start gap-3">
                         <img src={it.image_url} alt="História" className="w-24 h-24 object-cover rounded" />
                         <div className="flex-1">
                           <p className="text-sm text-gray-700">{it.caption || '-'}</p>
                           <div className="mt-2 flex gap-2">
-                            <button onClick={()=>startEditHistoryImage(it)} className="bg-blue-600 text-white px-3 py-1.5 rounded">Editar</button>
-                            <button onClick={()=>toggleHistoryImageVisible(it)} className="bg-gray-100 text-gray-800 px-3 py-1.5 rounded">{it.visible?'Ocultar':'Mostrar'}</button>
-                            <button onClick={()=>deleteHistoryImage(it.id)} className="bg-red-600 text-white px-3 py-1.5 rounded">Excluir</button>
+                            <button onClick={() => startEditHistoryImage(it)} className="bg-blue-600 text-white px-3 py-1.5 rounded">Editar</button>
+                            <button onClick={() => toggleHistoryImageVisible(it)} className="bg-gray-100 text-gray-800 px-3 py-1.5 rounded">{it.visible ? 'Ocultar' : 'Mostrar'}</button>
+                            <button onClick={() => deleteHistoryImage(it.id)} className="bg-red-600 text-white px-3 py-1.5 rounded">Excluir</button>
                           </div>
                         </div>
                       </div>
@@ -3788,15 +3684,15 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {photos.length === 0 && <p className="text-sm text-gray-600">Nenhuma foto.</p>}
-                      {photos.map((p)=> (
+                      {photos.map((p) => (
                         <div key={p.id} className="border rounded p-3 flex items-start gap-3">
                           <img src={p.image_url} alt="Galeria" className="w-24 h-24 object-cover rounded" />
                           <div className="flex-1">
                             <p className="text-sm text-gray-700">{p.caption || '-'}</p>
                             <div className="mt-2 flex gap-2">
-                              <button onClick={()=>startEditPhoto(p)} className="bg-blue-600 text-white px-3 py-1.5 rounded">Editar</button>
-                              <button onClick={()=>togglePhotoVisible(p)} className="bg-gray-100 text-gray-800 px-3 py-1.5 rounded">{p.visible?'Ocultar':'Mostrar'}</button>
-                              <button onClick={()=>deletePhoto(p.id)} className="bg-red-600 text-white px-3 py-1.5 rounded">Excluir</button>
+                              <button onClick={() => startEditPhoto(p)} className="bg-blue-600 text-white px-3 py-1.5 rounded">Editar</button>
+                              <button onClick={() => togglePhotoVisible(p)} className="bg-gray-100 text-gray-800 px-3 py-1.5 rounded">{p.visible ? 'Ocultar' : 'Mostrar'}</button>
+                              <button onClick={() => deletePhoto(p.id)} className="bg-red-600 text-white px-3 py-1.5 rounded">Excluir</button>
                             </div>
                           </div>
                         </div>
@@ -3810,35 +3706,35 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                   <form onSubmit={photoEditingId ? savePhotoMeta : uploadPhoto} className="space-y-3">
                     <div>
                       <label className="block text-sm font-medium mb-1">Legenda</label>
-                      <input 
-                        className="w-full border rounded px-3 py-2" 
-                        value={photoCaption} 
-                        onChange={(e)=>setPhotoCaption(e.target.value)} 
+                      <input
+                        className="w-full border rounded px-3 py-2"
+                        value={photoCaption}
+                        onChange={(e) => setPhotoCaption(e.target.value)}
                       />
                     </div>
                     {!photoEditingId && (
                       <div>
                         <label className="block text-sm font-medium mb-1">Imagem</label>
-                        <input 
-                          type="file" 
-                          accept="image/*" 
-                          onChange={(e)=>setPhotoFile(e.target.files?.[0] || null)} 
-                          className="w-full border rounded px-3 py-2" 
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => setPhotoFile(e.target.files?.[0] || null)}
+                          className="w-full border rounded px-3 py-2"
                         />
                       </div>
                     )}
                     <div className="flex gap-2">
-                      <button 
-                        type="submit" 
-                        disabled={photoLoading} 
+                      <button
+                        type="submit"
+                        disabled={photoLoading}
                         className="flex-1 bg-cyan-700 text-white px-3 py-2 rounded disabled:opacity-50"
                       >
                         {photoEditingId ? (photoLoading ? 'Atualizando...' : 'Atualizar') : (photoLoading ? 'Enviando...' : 'Enviar')}
                       </button>
                       {photoEditingId && (
-                        <button 
-                          type="button" 
-                          onClick={()=>{ setPhotoEditingId(null); setPhotoCaption(''); }} 
+                        <button
+                          type="button"
+                          onClick={() => { setPhotoEditingId(null); setPhotoCaption(''); }}
                           className="px-3 py-2 rounded bg-gray-200"
                         >
                           Cancelar
@@ -3881,28 +3777,28 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                   <form onSubmit={createOrUpdateCarouselItem} className="space-y-3">
                     <div>
                       <label className="block text-sm font-medium mb-1">Imagem</label>
-                      <input 
-                        type="file" 
-                        accept="image/*" 
+                      <input
+                        type="file"
+                        accept="image/*"
                         onChange={(e) => {
                           const f = e.target.files?.[0] || null;
                           if (f && f.size <= MAX_FILE_MB * 1024 * 1024) {
                             setCarouselFile(f);
                             setCarouselPreview(URL.createObjectURL(f));
                           }
-                        }} 
-                        className="w-full border rounded px-3 py-2" 
+                        }}
+                        className="w-full border rounded px-3 py-2"
                       />
                       {carouselPreview && (
                         <div className="mt-2"><img src={carouselPreview} alt="Preview" className="w-full h-32 object-cover rounded" /></div>
                       )}
                     </div>
                     <div className="flex items-center gap-2">
-                      <input 
-                        id="isAd" 
-                        type="checkbox" 
-                        checked={carouselForm.is_ad} 
-                        onChange={(e) => setCarouselForm((v) => ({ ...v, is_ad: e.target.checked }))} 
+                      <input
+                        id="isAd"
+                        type="checkbox"
+                        checked={carouselForm.is_ad}
+                        onChange={(e) => setCarouselForm((v) => ({ ...v, is_ad: e.target.checked }))}
                       />
                       <label htmlFor="isAd" className="text-sm">Transformar em anúncio (com botão)</label>
                     </div>
@@ -3910,18 +3806,18 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                       <>
                         <div>
                           <label className="block text-sm font-medium mb-1">Texto do botão</label>
-                          <input 
-                            className="w-full border rounded px-3 py-2" 
-                            value={carouselForm.cta_text ?? ''} 
-                            onChange={(e) => setCarouselForm((v) => ({ ...v, cta_text: e.target.value }))} 
+                          <input
+                            className="w-full border rounded px-3 py-2"
+                            value={carouselForm.cta_text ?? ''}
+                            onChange={(e) => setCarouselForm((v) => ({ ...v, cta_text: e.target.value }))}
                           />
                         </div>
                         <div>
                           <label className="block text-sm font-medium mb-1">URL do botão</label>
-                          <input 
-                            className="w-full border rounded px-3 py-2" 
-                            value={carouselForm.cta_url ?? ''} 
-                            onChange={(e) => setCarouselForm((v) => ({ ...v, cta_url: e.target.value }))} 
+                          <input
+                            className="w-full border rounded px-3 py-2"
+                            value={carouselForm.cta_url ?? ''}
+                            onChange={(e) => setCarouselForm((v) => ({ ...v, cta_url: e.target.value }))}
                           />
                         </div>
                       </>
@@ -3929,44 +3825,44 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="block text-sm font-medium mb-1">Ordem</label>
-                        <input 
-                          type="number" 
-                          className="w-full border rounded px-3 py-2" 
-                          value={carouselForm.sort_order ?? ''} 
-                          onChange={(e) => { 
-                            const val = e.target.value; 
-                            setCarouselForm((v) => ({ ...v, sort_order: val === '' ? 0 : Number(val) })); 
-                          }} 
+                        <input
+                          type="number"
+                          className="w-full border rounded px-3 py-2"
+                          value={carouselForm.sort_order ?? ''}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setCarouselForm((v) => ({ ...v, sort_order: val === '' ? 0 : Number(val) }));
+                          }}
                         />
                       </div>
                       <div className="flex items-center gap-2 mt-6">
-                        <input 
-                          id="active" 
-                          type="checkbox" 
-                          checked={carouselForm.active} 
-                          onChange={(e) => setCarouselForm((v) => ({ ...v, active: e.target.checked }))} 
+                        <input
+                          id="active"
+                          type="checkbox"
+                          checked={carouselForm.active}
+                          onChange={(e) => setCarouselForm((v) => ({ ...v, active: e.target.checked }))}
                         />
                         <label htmlFor="active" className="text-sm">Ativo</label>
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <button 
-                        type="submit" 
-                        disabled={carouselLoading} 
+                      <button
+                        type="submit"
+                        disabled={carouselLoading}
                         className="flex-1 bg-cyan-700 text-white px-3 py-2 rounded disabled:opacity-50"
                       >
                         {carouselLoading ? (carouselEditingId ? 'Atualizando...' : 'Salvando...') : (carouselEditingId ? 'Atualizar' : 'Salvar')}
                       </button>
                       {carouselEditingId && (
-                        <button 
-                          type="button" 
-                          onClick={() => { 
-                            setCarouselEditingId(null); 
-                            setCarouselForm({ is_ad: false, cta_text: '', cta_url: '', sort_order: 0, active: true }); 
-                            setCarouselFile(null); 
-                            setCarouselPreview(''); 
-                            setCarouselError(null); 
-                          }} 
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCarouselEditingId(null);
+                            setCarouselForm({ is_ad: false, cta_text: '', cta_url: '', sort_order: 0, active: true });
+                            setCarouselFile(null);
+                            setCarouselPreview('');
+                            setCarouselError(null);
+                          }}
                           className="px-3 py-2 rounded bg-gray-200"
                         >
                           Cancelar
@@ -3977,47 +3873,47 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                 </div>
               </div>
             ) : adminTab === 'guide' ? (
-  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-    <div className="lg:col-span-2 bg-white rounded-lg shadow p-4">
-      <h3 className="font-semibold mb-4">Dados do Guia</h3>
-      {guideError && <div className="mb-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">{guideError}</div>}
-      <form onSubmit={saveGuideSettings} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium mb-1">Nome do App</label>
-          <input className="w-full border rounded px-3 py-2" value={guide.app_name} onChange={e=>setGuide(g=>({ ...g, app_name: e.target.value }))} />
-          <p className="mt-1 text-xs text-gray-500">Ex.: Guia Boipeba. Ao salvar, o título do site é atualizado.</p>
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">WhatsApp (somente números, com DDI)</label>
-          <input className="w-full border rounded px-3 py-2" value={guide.whatsapp} onChange={e=>setGuide(g=>({ ...g, whatsapp: e.target.value }))} placeholder="5574999988348" />
-          <p className="mt-1 text-xs text-gray-500">Usado no Anuncie (banner) e no CTA “Saiba Mais” do BusinessDetail.</p>
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">Favicon</label>
-          <input type="file" accept="image/png,image/x-icon" onChange={e=>setFaviconFile(e.target.files?.[0] || null)} />
-          <p className="mt-1 text-xs text-gray-500">PNG 32x32 ou 48x48.</p>
-          {guide.favicon_url && <img src={guide.favicon_url} className="mt-2 w-8 h-8 rounded border" />}
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">Imagem de abertura (splash)</label>
-          <input type="file" accept="image/png,image/jpeg" onChange={e=>setSplashFile(e.target.files?.[0] || null)} />
-          <p className="mt-1 text-xs text-gray-500">PNG/JPG. Sugestão: 1242x2688 (iPhone X/11) ou 2048x2732 (iPad).</p>
-          {guide.splash_url && <img src={guide.splash_url} className="mt-2 w-24 h-24 object-cover rounded border" />}
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1">Ícone do App</label>
-          <input type="file" accept="image/png" onChange={e=>setIconFile(e.target.files?.[0] || null)} />
-          <p className="mt-1 text-xs text-gray-500">PNG 512x512 com fundo transparente.</p>
-          {guide.app_icon_url && <img src={guide.app_icon_url} className="mt-2 w-16 h-16 object-cover rounded border" />}
-        </div>
-        <div className="flex gap-2">
-          <button disabled={guideLoading} className="bg-cyan-700 text-white px-4 py-2 rounded disabled:opacity-60">Salvar</button>
-        </div>
-      </form>
-    </div>
-  </div>
-            
-            
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 bg-white rounded-lg shadow p-4">
+                  <h3 className="font-semibold mb-4">Dados do Guia</h3>
+                  {guideError && <div className="mb-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">{guideError}</div>}
+                  <form onSubmit={saveGuideSettings} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Nome do App</label>
+                      <input className="w-full border rounded px-3 py-2" value={guide.app_name} onChange={e => setGuide(g => ({ ...g, app_name: e.target.value }))} />
+                      <p className="mt-1 text-xs text-gray-500">Ex.: Guia Boipeba. Ao salvar, o título do site é atualizado.</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">WhatsApp (somente números, com DDI)</label>
+                      <input className="w-full border rounded px-3 py-2" value={guide.whatsapp} onChange={e => setGuide(g => ({ ...g, whatsapp: e.target.value }))} placeholder="5574999988348" />
+                      <p className="mt-1 text-xs text-gray-500">Usado no Anuncie (banner) e no CTA “Saiba Mais” do BusinessDetail.</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Favicon</label>
+                      <input type="file" accept="image/png,image/x-icon" onChange={e => setFaviconFile(e.target.files?.[0] || null)} />
+                      <p className="mt-1 text-xs text-gray-500">PNG 32x32 ou 48x48.</p>
+                      {guide.favicon_url && <img src={guide.favicon_url} className="mt-2 w-8 h-8 rounded border" />}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Imagem de abertura (splash)</label>
+                      <input type="file" accept="image/png,image/jpeg" onChange={e => setSplashFile(e.target.files?.[0] || null)} />
+                      <p className="mt-1 text-xs text-gray-500">PNG/JPG. Sugestão: 1242x2688 (iPhone X/11) ou 2048x2732 (iPad).</p>
+                      {guide.splash_url && <img src={guide.splash_url} className="mt-2 w-24 h-24 object-cover rounded border" />}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Ícone do App</label>
+                      <input type="file" accept="image/png" onChange={e => setIconFile(e.target.files?.[0] || null)} />
+                      <p className="mt-1 text-xs text-gray-500">PNG 512x512 com fundo transparente.</p>
+                      {guide.app_icon_url && <img src={guide.app_icon_url} className="mt-2 w-16 h-16 object-cover rounded border" />}
+                    </div>
+                    <div className="flex gap-2">
+                      <button disabled={guideLoading} className="bg-cyan-700 text-white px-4 py-2 rounded disabled:opacity-60">Salvar</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+
+
             ) : adminTab === 'comoChegar' ? (
               <AdminComoChegar />
             ) : adminTab === 'plans' ? (
@@ -4054,34 +3950,34 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                   <form onSubmit={createOrUpdatePlan} className="space-y-3">
                     <div>
                       <label className="block text-sm font-medium mb-1">Nome</label>
-                      <input className="w-full border rounded px-3 py-2" value={planForm.name} onChange={(e)=>setPlanForm(v=>({ ...v, name: e.target.value }))} />
+                      <input className="w-full border rounded px-3 py-2" value={planForm.name} onChange={(e) => setPlanForm(v => ({ ...v, name: e.target.value }))} />
                     </div>
                     <div>
                       <label className="block text-sm font-medium mb-1">Slug</label>
-                      <input className="w-full border rounded px-3 py-2" value={planForm.slug} onChange={(e)=>setPlanForm(v=>({ ...v, slug: e.target.value }))} placeholder="ex.: semestral, anual" />
+                      <input className="w-full border rounded px-3 py-2" value={planForm.slug} onChange={(e) => setPlanForm(v => ({ ...v, slug: e.target.value }))} placeholder="ex.: semestral, anual" />
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="block text-sm font-medium mb-1">Meses</label>
-                        <input type="number" className="w-full border rounded px-3 py-2" value={planForm.months} onChange={(e)=>setPlanForm(v=>({ ...v, months: Number(e.target.value || 0) }))} />
+                        <input type="number" className="w-full border rounded px-3 py-2" value={planForm.months} onChange={(e) => setPlanForm(v => ({ ...v, months: Number(e.target.value || 0) }))} />
                       </div>
                       <div>
                         <label className="block text-sm font-medium mb-1">Preço (R$)</label>
-                        <input type="number" step="0.01" className="w-full border rounded px-3 py-2" value={planForm.price ?? ''} onChange={(e)=>setPlanForm(v=>({ ...v, price: e.target.value === '' ? null : Number(e.target.value) }))} />
+                        <input type="number" step="0.01" className="w-full border rounded px-3 py-2" value={planForm.price ?? ''} onChange={(e) => setPlanForm(v => ({ ...v, price: e.target.value === '' ? null : Number(e.target.value) }))} />
                       </div>
                     </div>
                     <div>
                       <label className="block text-sm font-medium mb-1">Descrição</label>
-                      <textarea className="w-full border rounded px-3 py-2" rows={3} value={planForm.description ?? ''} onChange={(e)=>setPlanForm(v=>({ ...v, description: e.target.value }))} />
+                      <textarea className="w-full border rounded px-3 py-2" rows={3} value={planForm.description ?? ''} onChange={(e) => setPlanForm(v => ({ ...v, description: e.target.value }))} />
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="flex items-center gap-2 mt-1">
-                        <input id="plActive" type="checkbox" checked={planForm.active} onChange={(e)=>setPlanForm(v=>({ ...v, active: e.target.checked }))} />
+                        <input id="plActive" type="checkbox" checked={planForm.active} onChange={(e) => setPlanForm(v => ({ ...v, active: e.target.checked }))} />
                         <label htmlFor="plActive" className="text-sm">Ativo</label>
                       </div>
                       <div>
                         <label className="block text-sm font-medium mb-1">Ordem</label>
-                        <input type="number" className="w-full border rounded px-3 py-2" value={planForm.sort_order ?? 0} onChange={(e)=>setPlanForm(v=>({ ...v, sort_order: Number(e.target.value || 0) }))} />
+                        <input type="number" className="w-full border rounded px-3 py-2" value={planForm.sort_order ?? 0} onChange={(e) => setPlanForm(v => ({ ...v, sort_order: Number(e.target.value || 0) }))} />
                       </div>
                     </div>
                     <div className="flex gap-2">
@@ -4089,7 +3985,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                         {plansLoading ? (planEditingId ? 'Atualizando...' : 'Salvando...') : (planEditingId ? 'Atualizar' : 'Salvar')}
                       </button>
                       {planEditingId && (
-                        <button type="button" onClick={()=>{ setPlanEditingId(null); setPlanForm({ name: '', slug: '', months: 6, price: null, active: true, sort_order: 0, description: '' }); }} className="px-3 py-2 rounded border">Cancelar</button>
+                        <button type="button" onClick={() => { setPlanEditingId(null); setPlanForm({ name: '', slug: '', months: 6, price: null, active: true, sort_order: 0, description: '' }); }} className="px-3 py-2 rounded border">Cancelar</button>
                       )}
                     </div>
                   </form>
@@ -4109,28 +4005,28 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                               key={c.id}
                               data-type="category"
                               data-id={String(c.id)}
-                              className={`flex items-center justify-between gap-2 px-2 py-1 rounded border transition-all duration-150 ${dragging?.type==='category' && String(c.id)===dragging.id ? 'opacity-60 scale-[0.98]' : ''} ${dragOverId===String(c.id) ? 'ring-2 ring-cyan-400' : ''}`}
+                              className={`flex items-center justify-between gap-2 px-2 py-1 rounded border transition-all duration-150 ${dragging?.type === 'category' && String(c.id) === dragging.id ? 'opacity-60 scale-[0.98]' : ''} ${dragOverId === String(c.id) ? 'ring-2 ring-cyan-400' : ''}`}
                               onDragOver={onCategoryDragOver}
-                              onDragEnter={()=>setDragOverId(String(c.id))}
-                              onDrop={()=>onCategoryDrop(String(c.id))}
+                              onDragEnter={() => setDragOverId(String(c.id))}
+                              onDrop={() => onCategoryDrop(String(c.id))}
                             >
                               <div className="flex items-center gap-2">
                                 <span
-                                  className={`cursor-grab touch-none select-none px-1 ${selectedMove?.type==='category' && selectedMove.id===String(c.id) ? 'bg-cyan-100 text-cyan-700 rounded' : 'text-gray-400'}`}
+                                  className={`cursor-grab touch-none select-none px-1 ${selectedMove?.type === 'category' && selectedMove.id === String(c.id) ? 'bg-cyan-100 text-cyan-700 rounded' : 'text-gray-400'}`}
                                   title="Arraste para reordenar"
                                   draggable={!isCoarsePointer}
-                                  {...(!isCoarsePointer ? { onDragStart: (e:any)=>onCategoryDragStart(e, String(c.id), c.name), onDragEnd: ()=>{ dragCleanupRef.current?.(); dragCleanupRef.current=null; setDragOverId(null); setDragging(null); } } : {})}
-                                  onClick={()=>handleCategoryHandleTap(String(c.id))}
-                                  {...(isCoarsePointer ? { onPointerDown: (e:any)=>onHandlePointerDown(e, 'category', String(c.id), c.name), onPointerMove: (e:any)=>{ if(isPointerDragRef.current && dragging){ e.preventDefault(); const overId = findTargetIdAtPoint('category', e.clientX, e.clientY); if(overId) setDragOverId(overId);} }, onPointerUp: ()=>pointerUpHandler(), onPointerCancel: ()=>pointerUpHandler() } : {})}
+                                  {...(!isCoarsePointer ? { onDragStart: (e: any) => onCategoryDragStart(e, String(c.id), c.name), onDragEnd: () => { dragCleanupRef.current?.(); dragCleanupRef.current = null; setDragOverId(null); setDragging(null); } } : {})}
+                                  onClick={() => handleCategoryHandleTap(String(c.id))}
+                                  {...(isCoarsePointer ? { onPointerDown: (e: any) => onHandlePointerDown(e, 'category', String(c.id), c.name), onPointerMove: (e: any) => { if (isPointerDragRef.current && dragging) { e.preventDefault(); const overId = findTargetIdAtPoint('category', e.clientX, e.clientY); if (overId) setDragOverId(overId); } }, onPointerUp: () => pointerUpHandler(), onPointerCancel: () => pointerUpHandler() } : {})}
                                 >
                                   ≡
                                 </span>
                                 <span className="text-xs text-gray-400 w-6 text-right">{(c.sort_order ?? idx) + 1}</span>
                                 {editingCatId === c.id ? (
-                                  <input 
-                                    className="border rounded px-2 py-1 text-sm" 
-                                    value={editingCatName} 
-                                    onChange={(e)=>setEditingCatName(e.target.value)} 
+                                  <input
+                                    className="border rounded px-2 py-1 text-sm"
+                                    value={editingCatName}
+                                    onChange={(e) => setEditingCatName(e.target.value)}
                                   />
                                 ) : (
                                   <span className="text-sm">{c.name}</span>
@@ -4138,28 +4034,28 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                               </div>
                               <div className="flex items-center gap-2">
                                 <label className="text-xs flex items-center gap-1">
-                                  <input 
-                                    type="checkbox" 
-                                    checked={!!c.hidden} 
-                                    onChange={async (e)=>{ 
-                                      const { error } = await supabase.from('categories').update({ hidden: e.target.checked }).eq('id', c.id); 
-                                      if(error){ setCatError(error.message);} else { await fetchCategories(); } 
-                                    }} 
+                                  <input
+                                    type="checkbox"
+                                    checked={!!c.hidden}
+                                    onChange={async (e) => {
+                                      const { error } = await supabase.from('categories').update({ hidden: e.target.checked }).eq('id', c.id);
+                                      if (error) { setCatError(error.message); } else { await fetchCategories(); }
+                                    }}
                                   /> Ocultar
                                 </label>
                                 {editingCatId === c.id ? (
                                   <>
-                                    <button onClick={()=>updateCategoryName(c.id, editingCatName)} className="text-white bg-green-600 px-2 py-1 rounded text-xs">Salvar</button>
-                                    <button onClick={()=>{setEditingCatId(''); setEditingCatName('');}} className="text-gray-700 bg-gray-200 px-2 py-1 rounded text-xs">Cancelar</button>
+                                    <button onClick={() => updateCategoryName(c.id, editingCatName)} className="text-white bg-green-600 px-2 py-1 rounded text-xs">Salvar</button>
+                                    <button onClick={() => { setEditingCatId(''); setEditingCatName(''); }} className="text-gray-700 bg-gray-200 px-2 py-1 rounded text-xs">Cancelar</button>
                                   </>
                                 ) : (
-                                  <button onClick={()=>{setEditingCatId(c.id); setEditingCatName(c.name);}} className="text-blue-700 bg-blue-100 px-2 py-1 rounded text-xs">Editar</button>
+                                  <button onClick={() => { setEditingCatId(c.id); setEditingCatName(c.name); }} className="text-blue-700 bg-blue-100 px-2 py-1 rounded text-xs">Editar</button>
                                 )}
-                                <button onClick={()=>moveCategoryToTop(c.id)} className="px-2 py-1 rounded text-xs bg-gray-100">Topo</button>
-                                <button onClick={()=>swapCategoryOrder(c.id, -1)} className="px-2 py-1 rounded text-xs bg-gray-100">▲</button>
-                                <button onClick={()=>swapCategoryOrder(c.id, 1)} className="px-2 py-1 rounded text-xs bg-gray-100">▼</button>
-                                <button onClick={()=>moveCategoryToBottom(c.id)} className="px-2 py-1 rounded text-xs bg-gray-100">Fim</button>
-                                <button onClick={async ()=>{ if(!confirm('Excluir categoria? Isso pode falhar se houver subcategorias/empresas vinculadas.')) return; const { error } = await supabase.from('categories').delete().eq('id', c.id); if(error){ setCatError(error.message);} else { await fetchAdminTaxonomies(); } }} className="px-2 py-1 rounded text-xs bg-red-100 text-red-700">Excluir</button>
+                                <button onClick={() => moveCategoryToTop(c.id)} className="px-2 py-1 rounded text-xs bg-gray-100">Topo</button>
+                                <button onClick={() => swapCategoryOrder(c.id, -1)} className="px-2 py-1 rounded text-xs bg-gray-100">▲</button>
+                                <button onClick={() => swapCategoryOrder(c.id, 1)} className="px-2 py-1 rounded text-xs bg-gray-100">▼</button>
+                                <button onClick={() => moveCategoryToBottom(c.id)} className="px-2 py-1 rounded text-xs bg-gray-100">Fim</button>
+                                <button onClick={async () => { if (!confirm('Excluir categoria? Isso pode falhar se houver subcategorias/empresas vinculadas.')) return; const { error } = await supabase.from('categories').delete().eq('id', c.id); if (error) { setCatError(error.message); } else { await fetchAdminTaxonomies(); } }} className="px-2 py-1 rounded text-xs bg-red-100 text-red-700">Excluir</button>
                               </div>
                             </div>
                           ))}
@@ -4171,9 +4067,9 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                           <button
                             type="button"
                             className="px-2 py-1 rounded text-xs bg-gray-100"
-                            onClick={()=>{
+                            onClick={() => {
                               const m: Record<string, boolean> = {};
-                              categories.forEach((c:any)=>{ const has = subcategories.some((s:any)=> s.category_id===c.id); if(has) m[String(c.id)] = false; });
+                              categories.forEach((c: any) => { const has = subcategories.some((s: any) => s.category_id === c.id); if (has) m[String(c.id)] = false; });
                               setCollapsedSubGroups(m);
                             }}
                           >
@@ -4182,9 +4078,9 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                           <button
                             type="button"
                             className="px-2 py-1 rounded text-xs bg-gray-100"
-                            onClick={()=>{
+                            onClick={() => {
                               const m: Record<string, boolean> = {};
-                              categories.forEach((c:any)=>{ const has = subcategories.some((s:any)=> s.category_id===c.id); if(has) m[String(c.id)] = true; });
+                              categories.forEach((c: any) => { const has = subcategories.some((s: any) => s.category_id === c.id); if (has) m[String(c.id)] = true; });
                               setCollapsedSubGroups(m);
                             }}
                           >
@@ -4193,43 +4089,43 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                         </div>
                         <div className="space-y-4">
                           {categories.map((cat) => {
-                            const list = subcategories.filter((s:any)=> s.category_id === cat.id);
+                            const list = subcategories.filter((s: any) => s.category_id === cat.id);
                             if (!list.length) return null;
                             return (
                               <div key={cat.id}>
-                                <button type="button" className="w-full text-left text-xs font-semibold text-gray-600 mb-1 flex items-center justify-between" onClick={()=>setCollapsedSubGroups(prev=>({ ...prev, [String(cat.id)]: !prev[String(cat.id)] }))}>
+                                <button type="button" className="w-full text-left text-xs font-semibold text-gray-600 mb-1 flex items-center justify-between" onClick={() => setCollapsedSubGroups(prev => ({ ...prev, [String(cat.id)]: !prev[String(cat.id)] }))}>
                                   <span>{cat.name}</span>
                                   <span className="text-gray-400">{list.length}</span>
                                 </button>
                                 <div className={`space-y-2 transition-all duration-200 ${collapsedSubGroups[String(cat.id)] ? 'opacity-0 max-h-0 overflow-hidden' : 'opacity-100'}`}>
-                                  {list.map((s:any, idx:number) => (
+                                  {list.map((s: any, idx: number) => (
                                     <div
                                       key={s.id}
                                       data-type="subcategory"
                                       data-id={String(s.id)}
-                                      className={`flex items-center justify-between gap-2 px-2 py-1 rounded border transition-all duration-150 ${dragging?.type==='subcategory' && String(s.id)===dragging.id ? 'opacity-60 scale-[0.98]' : ''} ${dragOverId===String(s.id) ? 'ring-2 ring-cyan-400' : ''}`}
+                                      className={`flex items-center justify-between gap-2 px-2 py-1 rounded border transition-all duration-150 ${dragging?.type === 'subcategory' && String(s.id) === dragging.id ? 'opacity-60 scale-[0.98]' : ''} ${dragOverId === String(s.id) ? 'ring-2 ring-cyan-400' : ''}`}
                                       onDragOver={onSubcategoryDragOver}
-                                      onDragEnter={()=>setDragOverId(String(s.id))}
-                                      onDrop={()=>onSubcategoryDrop(String(s.id))}
+                                      onDragEnter={() => setDragOverId(String(s.id))}
+                                      onDrop={() => onSubcategoryDrop(String(s.id))}
                                     >
                                       <div className="flex items-center gap-2">
                                         <span
-                                          className={`cursor-grab touch-none select-none px-1 ${selectedMove?.type==='subcategory' && selectedMove.id===String(s.id) ? 'bg-cyan-100 text-cyan-700 rounded' : 'text-gray-400'}`}
+                                          className={`cursor-grab touch-none select-none px-1 ${selectedMove?.type === 'subcategory' && selectedMove.id === String(s.id) ? 'bg-cyan-100 text-cyan-700 rounded' : 'text-gray-400'}`}
                                           title="Arraste para reordenar"
                                           draggable={!isCoarsePointer}
-                                          {...(!isCoarsePointer ? { onDragStart: (e:any)=>onSubcategoryDragStart(e, String(s.id), s.name), onDragEnd: ()=>{ dragCleanupRef.current?.(); dragCleanupRef.current=null; setDragOverId(null); setDragging(null); } } : {})}
-                                          onClick={()=>handleSubcategoryHandleTap(String(s.id))}
-                                          {...(isCoarsePointer ? { onPointerDown: (e:any)=>onHandlePointerDown(e, 'subcategory', String(s.id), s.name), onPointerMove: (e:any)=>{ if(isPointerDragRef.current && dragging){ e.preventDefault(); const overId = findTargetIdAtPoint('subcategory', e.clientX, e.clientY); if(overId) setDragOverId(overId);} }, onPointerUp: ()=>pointerUpHandler(), onPointerCancel: ()=>pointerUpHandler() } : {})}
+                                          {...(!isCoarsePointer ? { onDragStart: (e: any) => onSubcategoryDragStart(e, String(s.id), s.name), onDragEnd: () => { dragCleanupRef.current?.(); dragCleanupRef.current = null; setDragOverId(null); setDragging(null); } } : {})}
+                                          onClick={() => handleSubcategoryHandleTap(String(s.id))}
+                                          {...(isCoarsePointer ? { onPointerDown: (e: any) => onHandlePointerDown(e, 'subcategory', String(s.id), s.name), onPointerMove: (e: any) => { if (isPointerDragRef.current && dragging) { e.preventDefault(); const overId = findTargetIdAtPoint('subcategory', e.clientX, e.clientY); if (overId) setDragOverId(overId); } }, onPointerUp: () => pointerUpHandler(), onPointerCancel: () => pointerUpHandler() } : {})}
                                         >
                                           ≡
                                         </span>
                                         <span className="text-xs text-gray-400 w-6 text-right">{(s.sort_order ?? idx) + 1}</span>
-                                        <span className="text-[11px] text-gray-400">{categories.find(c=>c.id===s.category_id)?.name}</span>
+                                        <span className="text-[11px] text-gray-400">{categories.find(c => c.id === s.category_id)?.name}</span>
                                         {editingSubId === s.id ? (
-                                          <input 
-                                            className="border rounded px-2 py-1 text-sm" 
-                                            value={editingSubName} 
-                                            onChange={(e)=>setEditingSubName(e.target.value)} 
+                                          <input
+                                            className="border rounded px-2 py-1 text-sm"
+                                            value={editingSubName}
+                                            onChange={(e) => setEditingSubName(e.target.value)}
                                           />
                                         ) : (
                                           <span className="text-sm">{s.name}</span>
@@ -4237,33 +4133,33 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                                       </div>
                                       <div className="flex items-center gap-2">
                                         <label className="text-xs flex items-center gap-1">
-                                          <input 
-                                            type="checkbox" 
-                                            checked={!!s.hidden} 
-                                            onChange={async (e)=>{ 
-                                              const { error } = await supabase.from('subcategories').update({ hidden: e.target.checked }).eq('id', s.id); 
-                                              if(error){ setCatError(error.message);} else { await fetchSubcategories(s.category_id); } 
-                                            }} 
+                                          <input
+                                            type="checkbox"
+                                            checked={!!s.hidden}
+                                            onChange={async (e) => {
+                                              const { error } = await supabase.from('subcategories').update({ hidden: e.target.checked }).eq('id', s.id);
+                                              if (error) { setCatError(error.message); } else { await fetchSubcategories(s.category_id); }
+                                            }}
                                           /> Ocultar
                                         </label>
                                         {editingSubId === s.id ? (
                                           <>
-                                            <button onClick={()=>updateSubcategoryName(s.id, editingSubName)} className="text-white bg-green-600 px-2 py-1 rounded text-xs">Salvar</button>
-                                            <button onClick={()=>{setEditingSubId(''); setEditingSubName('');}} className="text-gray-700 bg-gray-200 px-2 py-1 rounded text-xs">Cancelar</button>
+                                            <button onClick={() => updateSubcategoryName(s.id, editingSubName)} className="text-white bg-green-600 px-2 py-1 rounded text-xs">Salvar</button>
+                                            <button onClick={() => { setEditingSubId(''); setEditingSubName(''); }} className="text-gray-700 bg-gray-200 px-2 py-1 rounded text-xs">Cancelar</button>
                                           </>
                                         ) : (
-                                          <button onClick={()=>{setEditingSubId(s.id); setEditingSubName(s.name);}} className="text-blue-700 bg-blue-100 px-2 py-1 rounded text-xs">Editar</button>
+                                          <button onClick={() => { setEditingSubId(s.id); setEditingSubName(s.name); }} className="text-blue-700 bg-blue-100 px-2 py-1 rounded text-xs">Editar</button>
                                         )}
-                                        <button onClick={()=>moveSubcategoryToTop(s.id)} className="px-2 py-1 rounded text-xs bg-gray-100">Topo</button>
-                                        <button onClick={()=>swapSubcategoryOrder(s.id, -1)} className="px-2 py-1 rounded text-xs bg-gray-100">▲</button>
-                                        <button onClick={()=>swapSubcategoryOrder(s.id, 1)} className="px-2 py-1 rounded text-xs bg-gray-100">▼</button>
-                                        <button onClick={()=>moveSubcategoryToBottom(s.id)} className="px-2 py-1 rounded text-xs bg-gray-100">Fim</button>
-                                        <button onClick={async ()=>{ if(!confirm('Excluir subcategoria? Isso pode falhar se houver empresas vinculadas.')) return; const { error } = await supabase.from('subcategories').delete().eq('id', s.id); if(error){ setCatError(error.message);} else { await fetchAdminTaxonomies(); } }} className="px-2 py-1 rounded text-xs bg-red-100 text-red-700">Excluir</button>
+                                        <button onClick={() => moveSubcategoryToTop(s.id)} className="px-2 py-1 rounded text-xs bg-gray-100">Topo</button>
+                                        <button onClick={() => swapSubcategoryOrder(s.id, -1)} className="px-2 py-1 rounded text-xs bg-gray-100">▲</button>
+                                        <button onClick={() => swapSubcategoryOrder(s.id, 1)} className="px-2 py-1 rounded text-xs bg-gray-100">▼</button>
+                                        <button onClick={() => moveSubcategoryToBottom(s.id)} className="px-2 py-1 rounded text-xs bg-gray-100">Fim</button>
+                                        <button onClick={async () => { if (!confirm('Excluir subcategoria? Isso pode falhar se houver empresas vinculadas.')) return; const { error } = await supabase.from('subcategories').delete().eq('id', s.id); if (error) { setCatError(error.message); } else { await fetchAdminTaxonomies(); } }} className="px-2 py-1 rounded text-xs bg-red-100 text-red-700">Excluir</button>
                                       </div>
                                     </div>
                                   ))}
                                 </div>
-                                
+
                               </div>
                             );
                           })}
@@ -4277,28 +4173,28 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                               key={l.id}
                               data-type="location"
                               data-id={String(l.id)}
-                              className={`flex items-center justify-between gap-2 px-2 py-1 rounded border transition-all duration-150 ${dragging?.type==='location' && String(l.id)===dragging.id ? 'opacity-60 scale-[0.98]' : ''} ${dragOverId===String(l.id) ? 'ring-2 ring-cyan-400' : ''}`}
+                              className={`flex items-center justify-between gap-2 px-2 py-1 rounded border transition-all duration-150 ${dragging?.type === 'location' && String(l.id) === dragging.id ? 'opacity-60 scale-[0.98]' : ''} ${dragOverId === String(l.id) ? 'ring-2 ring-cyan-400' : ''}`}
                               onDragOver={onLocationDragOver}
-                              onDragEnter={()=>setDragOverId(String(l.id))}
-                              onDrop={()=>onLocationDrop(String(l.id))}
+                              onDragEnter={() => setDragOverId(String(l.id))}
+                              onDrop={() => onLocationDrop(String(l.id))}
                             >
                               <div className="flex items-center gap-2">
                                 <span
-                                  className={`cursor-grab touch-none select-none px-1 ${selectedMove?.type==='location' && selectedMove.id===String(l.id) ? 'bg-cyan-100 text-cyan-700 rounded' : 'text-gray-400'}`}
+                                  className={`cursor-grab touch-none select-none px-1 ${selectedMove?.type === 'location' && selectedMove.id === String(l.id) ? 'bg-cyan-100 text-cyan-700 rounded' : 'text-gray-400'}`}
                                   title="Arraste para reordenar"
                                   draggable={!isCoarsePointer}
-                                  {...(!isCoarsePointer ? { onDragStart: (e:any)=>onLocationDragStart(e, String(l.id), l.name), onDragEnd: ()=>{ dragCleanupRef.current?.(); dragCleanupRef.current=null; setDragOverId(null); setDragging(null); } } : {})}
-                                  onClick={()=>handleLocationHandleTap(String(l.id))}
-                                  {...(isCoarsePointer ? { onPointerDown: (e:any)=>onHandlePointerDown(e, 'location', String(l.id), l.name), onPointerMove: (e:any)=>{ if(isPointerDragRef.current && dragging){ e.preventDefault(); const overId = findTargetIdAtPoint('location', e.clientX, e.clientY); if(overId) setDragOverId(overId);} }, onPointerUp: ()=>pointerUpHandler(), onPointerCancel: ()=>pointerUpHandler() } : {})}
+                                  {...(!isCoarsePointer ? { onDragStart: (e: any) => onLocationDragStart(e, String(l.id), l.name), onDragEnd: () => { dragCleanupRef.current?.(); dragCleanupRef.current = null; setDragOverId(null); setDragging(null); } } : {})}
+                                  onClick={() => handleLocationHandleTap(String(l.id))}
+                                  {...(isCoarsePointer ? { onPointerDown: (e: any) => onHandlePointerDown(e, 'location', String(l.id), l.name), onPointerMove: (e: any) => { if (isPointerDragRef.current && dragging) { e.preventDefault(); const overId = findTargetIdAtPoint('location', e.clientX, e.clientY); if (overId) setDragOverId(overId); } }, onPointerUp: () => pointerUpHandler(), onPointerCancel: () => pointerUpHandler() } : {})}
                                 >
                                   ≡
                                 </span>
                                 <span className="text-xs text-gray-400 w-6 text-right">{(l.sort_order ?? idx) + 1}</span>
                                 {editingLocId === l.id ? (
-                                  <input 
-                                    className="border rounded px-2 py-1 text-sm" 
-                                    value={editingLocName} 
-                                    onChange={(e)=>setEditingLocName(e.target.value)} 
+                                  <input
+                                    className="border rounded px-2 py-1 text-sm"
+                                    value={editingLocName}
+                                    onChange={(e) => setEditingLocName(e.target.value)}
                                   />
                                 ) : (
                                   <span className="text-sm">{l.name}</span>
@@ -4306,28 +4202,28 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                               </div>
                               <div className="flex items-center gap-2">
                                 <label className="text-xs flex items-center gap-1">
-                                  <input 
-                                    type="checkbox" 
-                                    checked={!!l.hidden} 
-                                    onChange={async (e)=>{ 
-                                      const { error } = await supabase.from('locations').update({ hidden: e.target.checked }).eq('id', l.id); 
-                                      if(error){ setCatError(error.message);} else { await fetchLocations(); } 
-                                    }} 
+                                  <input
+                                    type="checkbox"
+                                    checked={!!l.hidden}
+                                    onChange={async (e) => {
+                                      const { error } = await supabase.from('locations').update({ hidden: e.target.checked }).eq('id', l.id);
+                                      if (error) { setCatError(error.message); } else { await fetchLocations(); }
+                                    }}
                                   /> Ocultar
                                 </label>
                                 {editingLocId === l.id ? (
                                   <>
-                                    <button onClick={()=>updateLocationName(l.id, editingLocName)} className="text-white bg-green-600 px-2 py-1 rounded text-xs">Salvar</button>
-                                    <button onClick={()=>{setEditingLocId(''); setEditingLocName('');}} className="text-gray-700 bg-gray-200 px-2 py-1 rounded text-xs">Cancelar</button>
+                                    <button onClick={() => updateLocationName(l.id, editingLocName)} className="text-white bg-green-600 px-2 py-1 rounded text-xs">Salvar</button>
+                                    <button onClick={() => { setEditingLocId(''); setEditingLocName(''); }} className="text-gray-700 bg-gray-200 px-2 py-1 rounded text-xs">Cancelar</button>
                                   </>
                                 ) : (
-                                  <button onClick={()=>{setEditingLocId(l.id); setEditingLocName(l.name);}} className="text-blue-700 bg-blue-100 px-2 py-1 rounded text-xs">Editar</button>
+                                  <button onClick={() => { setEditingLocId(l.id); setEditingLocName(l.name); }} className="text-blue-700 bg-blue-100 px-2 py-1 rounded text-xs">Editar</button>
                                 )}
-                                <button onClick={()=>moveLocationToTop(l.id)} className="px-2 py-1 rounded text-xs bg-gray-100">Topo</button>
-                                <button onClick={()=>swapLocationOrder(l.id, -1)} className="px-2 py-1 rounded text-xs bg-gray-100">▲</button>
-                                <button onClick={()=>swapLocationOrder(l.id, 1)} className="px-2 py-1 rounded text-xs bg-gray-100">▼</button>
-                                <button onClick={()=>moveLocationToBottom(l.id)} className="px-2 py-1 rounded text-xs bg-gray-100">Fim</button>
-                                <button onClick={async ()=>{ if(!confirm('Excluir local? Isso pode falhar se houver empresas vinculadas.')) return; const { error } = await supabase.from('locations').delete().eq('id', l.id); if(error){ setCatError(error.message);} else { await fetchAdminTaxonomies(); } }} className="px-2 py-1 rounded text-xs bg-red-100 text-red-700">Excluir</button>
+                                <button onClick={() => moveLocationToTop(l.id)} className="px-2 py-1 rounded text-xs bg-gray-100">Topo</button>
+                                <button onClick={() => swapLocationOrder(l.id, -1)} className="px-2 py-1 rounded text-xs bg-gray-100">▲</button>
+                                <button onClick={() => swapLocationOrder(l.id, 1)} className="px-2 py-1 rounded text-xs bg-gray-100">▼</button>
+                                <button onClick={() => moveLocationToBottom(l.id)} className="px-2 py-1 rounded text-xs bg-gray-100">Fim</button>
+                                <button onClick={async () => { if (!confirm('Excluir local? Isso pode falhar se houver empresas vinculadas.')) return; const { error } = await supabase.from('locations').delete().eq('id', l.id); if (error) { setCatError(error.message); } else { await fetchAdminTaxonomies(); } }} className="px-2 py-1 rounded text-xs bg-red-100 text-red-700">Excluir</button>
                               </div>
                             </div>
                           ))}
@@ -4343,23 +4239,23 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                     <div>
                       <label className="block text-sm font-medium mb-1">Nova categoria</label>
                       <div className="flex gap-2">
-                        <input 
-                          className="flex-1 border rounded px-3 py-2" 
-                          value={newCategoryName} 
-                          onChange={(e)=>setNewCategoryName(e.target.value)} 
+                        <input
+                          className="flex-1 border rounded px-3 py-2"
+                          value={newCategoryName}
+                          onChange={(e) => setNewCategoryName(e.target.value)}
                         />
-                        <button 
-                          className="bg-cyan-700 text-white px-3 py-2 rounded" 
-                          onClick={async()=>{ 
-                            if(!newCategoryName.trim()) return; 
-                            const nextOrder = Math.max(0, ...categories.map((c:any)=> (c.sort_order ?? 0))) + 1;
-                            const { error } = await supabase.from('categories').insert({ name: newCategoryName.trim(), sort_order: nextOrder }); 
-                            if(!error){ 
-                              setNewCategoryName(''); 
-                              await fetchAdminTaxonomies(); 
-                            } else { 
-                              setCatError(error.message); 
-                            } 
+                        <button
+                          className="bg-cyan-700 text-white px-3 py-2 rounded"
+                          onClick={async () => {
+                            if (!newCategoryName.trim()) return;
+                            const nextOrder = Math.max(0, ...categories.map((c: any) => (c.sort_order ?? 0))) + 1;
+                            const { error } = await supabase.from('categories').insert({ name: newCategoryName.trim(), sort_order: nextOrder });
+                            if (!error) {
+                              setNewCategoryName('');
+                              await fetchAdminTaxonomies();
+                            } else {
+                              setCatError(error.message);
+                            }
                           }}
                         >
                           Criar
@@ -4369,32 +4265,32 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                     <div>
                       <label className="block text-sm font-medium mb-1">Nova subcategoria</label>
                       <div className="flex gap-2">
-                        <select 
-                          className="border rounded px-3 py-2" 
-                          value={newSubcategoryCatId} 
-                          onChange={(e)=>setNewSubcategoryCatId(e.target.value)}
+                        <select
+                          className="border rounded px-3 py-2"
+                          value={newSubcategoryCatId}
+                          onChange={(e) => setNewSubcategoryCatId(e.target.value)}
                         >
                           <option value="">Categoria</option>
-                          {categories.map(c=> <option key={c.id} value={c.id}>{c.name}</option>)}
+                          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
-                        <input 
-                          className="flex-1 border rounded px-3 py-2" 
-                          value={newSubcategoryName} 
-                          onChange={(e)=>setNewSubcategoryName(e.target.value)} 
-                          placeholder="Nome da subcategoria" 
+                        <input
+                          className="flex-1 border rounded px-3 py-2"
+                          value={newSubcategoryName}
+                          onChange={(e) => setNewSubcategoryName(e.target.value)}
+                          placeholder="Nome da subcategoria"
                         />
-                        <button 
-                          className="bg-cyan-700 text-white px-3 py-2 rounded" 
-                          onClick={async()=>{ 
-                            if(!newSubcategoryName.trim()||!newSubcategoryCatId) return; 
-                            const nextOrder = Math.max(0, ...subcategories.filter(s=> s.category_id === newSubcategoryCatId).map((s:any)=> (s.sort_order ?? 0))) + 1;
-                            const { error } = await supabase.from('subcategories').insert({ name: newSubcategoryName.trim(), category_id: newSubcategoryCatId, sort_order: nextOrder }); 
-                            if(!error){ 
-                              setNewSubcategoryName(''); 
-                              await fetchAdminTaxonomies(); 
-                            } else { 
-                              setCatError(error.message); 
-                            } 
+                        <button
+                          className="bg-cyan-700 text-white px-3 py-2 rounded"
+                          onClick={async () => {
+                            if (!newSubcategoryName.trim() || !newSubcategoryCatId) return;
+                            const nextOrder = Math.max(0, ...subcategories.filter(s => s.category_id === newSubcategoryCatId).map((s: any) => (s.sort_order ?? 0))) + 1;
+                            const { error } = await supabase.from('subcategories').insert({ name: newSubcategoryName.trim(), category_id: newSubcategoryCatId, sort_order: nextOrder });
+                            if (!error) {
+                              setNewSubcategoryName('');
+                              await fetchAdminTaxonomies();
+                            } else {
+                              setCatError(error.message);
+                            }
                           }}
                         >
                           Criar
@@ -4404,23 +4300,23 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                     <div>
                       <label className="block text-sm font-medium mb-1">Novo local</label>
                       <div className="flex gap-2">
-                        <input 
-                          className="flex-1 border rounded px-3 py-2" 
-                          value={newLocationName} 
-                          onChange={(e)=>setNewLocationName(e.target.value)} 
+                        <input
+                          className="flex-1 border rounded px-3 py-2"
+                          value={newLocationName}
+                          onChange={(e) => setNewLocationName(e.target.value)}
                         />
-                        <button 
-                          className="bg-cyan-700 text-white px-3 py-2 rounded" 
-                          onClick={async()=>{ 
-                            if(!newLocationName.trim()) return; 
-                            const nextOrder = Math.max(0, ...locations.map((l:any)=> (l.sort_order ?? 0))) + 1;
-                            const { error } = await supabase.from('locations').insert({ name: newLocationName.trim(), sort_order: nextOrder }); 
-                            if(!error){ 
-                              setNewLocationName(''); 
-                              await fetchAdminTaxonomies(); 
-                            } else { 
-                              setCatError(error.message); 
-                            } 
+                        <button
+                          className="bg-cyan-700 text-white px-3 py-2 rounded"
+                          onClick={async () => {
+                            if (!newLocationName.trim()) return;
+                            const nextOrder = Math.max(0, ...locations.map((l: any) => (l.sort_order ?? 0))) + 1;
+                            const { error } = await supabase.from('locations').insert({ name: newLocationName.trim(), sort_order: nextOrder });
+                            if (!error) {
+                              setNewLocationName('');
+                              await fetchAdminTaxonomies();
+                            } else {
+                              setCatError(error.message);
+                            }
                           }}
                         >
                           Criar
@@ -4433,13 +4329,9 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
             )}
           </div>
         ) : view === 'comoChegar' ? (
-          <ComoChegar 
-            onBack={() => setView('none')} 
-            onNext={() => setView('events')} 
-            onGoToComoChegar={openComoChegar}
-            onGoToEvents={openEvents}
-            onGoToHistory={openHistoryPublic}
-            onGoToTours={openTours}
+          <ComoChegar
+            onBack={() => setView('none')}
+            onNext={() => setView('events')}
           />
         ) : view === 'anuncie' ? (
           <Anuncie
@@ -4510,7 +4402,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                           await navigator.clipboard.writeText(`${ev.title}\nData: ${day} - ${weekday}${locationName ? `\nLocal: ${locationName}` : ''}\n${url}`);
                           alert('Link copiado para a Ã¡rea de transferÃªncia.');
                         }
-                      } catch {}
+                      } catch { }
                     };
                     return (
                       <div
@@ -4530,7 +4422,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                             <p className="text-sm text-gray-700"><span className="font-semibold">Local:</span> {locationName}</p>
                           )}
                         </div>
-                        <button onClick={()=>{ setSelectedEvent(ev); setView('eventDetail'); }} className="mt-3 w-full py-2 rounded bg-[#003B63]/90 hover:bg-[#003B63]/90 text-white font-semibold">Saiba mais</button>
+                        <button onClick={() => { setSelectedEvent(ev); setView('eventDetail'); }} className="mt-3 w-full py-2 rounded bg-[#003B63]/90 hover:bg-[#003B63]/90 text-white font-semibold">Saiba mais</button>
                       </div>
                     );
                   })}
@@ -4591,9 +4483,9 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                           className="w-11 h-11 rounded-full bg-pink-600 hover:bg-pink-700 text-white inline-flex items-center justify-center shadow"
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
-                            <path d="M7 2C4.24 2 2 4.24 2 7v10c0 2.76 2.24 5 5 5h10c2.76 0 5-2.24 5-5V7c0-2.76-2.24-5-5-5H7zm0 2h10c1.67 0 3 1.33 3 3v10c0 1.67-1.33 3-3 3H7c-1.67 0-3-1.33-3-3V7c0-1.67 1.33-3 3-3zm11 2a1 1 0 100 2 1 1 0 000-2zM12 7a5 5 0 100 10 5 5 0 000-10zm0 2a3 3 0 110 6 3 3 0 010-6z"/>
-                        </svg>
-                      </a>
+                            <path d="M7 2C4.24 2 2 4.24 2 7v10c0 2.76 2.24 5 5 5h10c2.76 0 5-2.24 5-5V7c0-2.76-2.24-5-5-5H7zm0 2h10c1.67 0 3 1.33 3 3v10c0 1.67-1.33 3-3 3H7c-1.67 0-3-1.33-3-3V7c0-1.67 1.33-3 3-3zm11 2a1 1 0 100 2 1 1 0 000-2zM12 7a5 5 0 100 10 5 5 0 000-10zm0 2a3 3 0 110 6 3 3 0 010-6z" />
+                          </svg>
+                        </a>
                       )}
                       {(selectedEvent as any).facebook_url && (
                         <a
@@ -4605,15 +4497,15 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                           className="w-11 h-11 rounded-full bg-blue-700 hover:bg-blue-800 text-white inline-flex items-center justify-center shadow"
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
-                            <path d="M22 12.06C22 6.51 17.52 2 12 2S2 6.51 2 12.06C2 17.08 5.66 21.2 10.44 22v-7.03H7.9v-2.91h2.54V9.41c0-2.5 1.49-3.88 3.77-3.88 1.09 0 2.23.2 2.23.2v2.46h-1.26c-1.24 0-1.62.77-1.62 1.56v1.88h2.76l-.44 2.91h-2.32V22C18.34 21.2 22 17.08 22 12.06z"/>
-                        </svg>
-                      </a>
+                            <path d="M22 12.06C22 6.51 17.52 2 12 2S2 6.51 2 12.06C2 17.08 5.66 21.2 10.44 22v-7.03H7.9v-2.91h2.54V9.41c0-2.5 1.49-3.88 3.77-3.88 1.09 0 2.23.2 2.23.2v2.46h-1.26c-1.24 0-1.62.77-1.62 1.56v1.88h2.76l-.44 2.91h-2.32V22C18.34 21.2 22 17.08 22 12.06z" />
+                          </svg>
+                        </a>
                       )}
                       <button
                         aria-label="Compartilhar"
                         title="Compartilhar"
-                        onClick={async()=>{
-                          try{
+                        onClick={async () => {
+                          try {
                             const url = (selectedEvent as any).link || window.location.href;
                             const d = new Date(selectedEvent.date);
                             const day = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
@@ -4627,12 +4519,12 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                               await navigator.clipboard.writeText(`${selectedEvent.title}\nData: ${day} - ${weekday}${loc ? `\nLocal: ${loc}` : ''}\n${url}`);
                               alert('Link copiado para a Ã¡rea de transferÃªncia.');
                             }
-                          }catch{}
+                          } catch { }
                         }}
                         className="w-11 h-11 rounded-full bg-gray-700 hover:bg-gray-800 text-white inline-flex items-center justify-center shadow"
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
-                          <path d="M18 8a3 3 0 10-2.83-4H15a3 3 0 103 3zM6 14a3 3 0 100 6 3 3 0 000-6zm12 0a3 3 0 100 6 3 3 0 000-6zM8.59 15.17l6.83 3.41-.9 1.8-6.83-3.41.9-1.8zm6.83-9.55l.9 1.8-6.83 3.41-.9-1.8 6.83-3.41z"/>
+                          <path d="M18 8a3 3 0 10-2.83-4H15a3 3 0 103 3zM6 14a3 3 0 100 6 3 3 0 000-6zm12 0a3 3 0 100 6 3 3 0 000-6zM8.59 15.17l6.83 3.41-.9 1.8-6.83-3.41.9-1.8zm6.83-9.55l.9 1.8-6.83 3.41-.9-1.8 6.83-3.41z" />
                         </svg>
                       </button>
                     </div>
@@ -4662,10 +4554,10 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                   <select
                     className="w-full border rounded px-3 py-2"
                     value={phonesCatId}
-                    onChange={async (e)=>{ const id=e.target.value; setPhonesCatId(id); setPhonesSubId(''); await fetchSubcategories(id||undefined); await fetchPublicPhones(); }}
+                    onChange={async (e) => { const id = e.target.value; setPhonesCatId(id); setPhonesSubId(''); await fetchSubcategories(id || undefined); await fetchPublicPhones(); }}
                   >
                     <option value="">Todas</option>
-                    {categories.map(c=> <option key={c.id} value={c.id}>{c.name}</option>)}
+                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
                 <div>
@@ -4673,18 +4565,18 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                   <select
                     className="w-full border rounded px-3 py-2"
                     value={phonesSubId}
-                    onChange={async (e)=>{ setPhonesSubId(e.target.value); await fetchPublicPhones(); }}
+                    onChange={async (e) => { setPhonesSubId(e.target.value); await fetchPublicPhones(); }}
                     disabled={!phonesCatId}
                   >
                     <option value="">Todas</option>
-                    {subcategories.filter(s=> !phonesCatId || s.category_id===phonesCatId).map(s=> (
+                    {subcategories.filter(s => !phonesCatId || s.category_id === phonesCatId).map(s => (
                       <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
                   </select>
                 </div>
                 <div className="flex items-end">
                   <button
-                    onClick={async ()=>{ setPhonesCatId(''); setPhonesSubId(''); await fetchSubcategories(); await fetchPublicPhones(); }}
+                    onClick={async () => { setPhonesCatId(''); setPhonesSubId(''); await fetchSubcategories(); await fetchPublicPhones(); }}
                     className="w-full md:w-auto bg-white border px-3 py-2 rounded hover:bg-gray-50"
                   >
                     Limpar
@@ -4700,7 +4592,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                 <p className="text-gray-600 text-sm">Nenhum telefone encontrado.</p>
               ) : (
                 <div className="space-y-3">
-                  {publicPhones.map((r:any) => (
+                  {publicPhones.map((r: any) => (
                     <div key={r.id} className="border rounded p-3 flex items-center justify-between gap-4">
                       <div className="flex-1 flex items-center">
                         <h4 className="font-medium m-0">{r.name}</h4>
@@ -4735,7 +4627,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                 <p className="text-gray-600 text-sm">Nenhuma foto disponÃ­vel.</p>
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {publicPhotos.map((p:any)=> (
+                  {publicPhotos.map((p: any) => (
                     <div key={p.id} className="rounded overflow-hidden border bg-gray-50">
                       <img src={p.image_url} alt={p.caption || 'Foto'} className="w-full h-40 object-cover" />
                       {p.caption && <div className="px-2 py-1 text-xs text-gray-700">{p.caption}</div>}
@@ -4797,8 +4689,8 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
             {/* Empresas relacionadas Ã  categoria "Passeios & Atividades" */}
             {toursBusinesses.length > 0 && (
               <div className="mt-10">
-                <BusinessList 
-                  businesses={toursBusinesses} 
+                <BusinessList
+                  businesses={toursBusinesses}
                   onBusinessSelect={(b) => { setSelectedBusiness(b); setView('none'); }}
                   hideTitle
                 />
@@ -4846,8 +4738,8 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
             </div>
           </div>
         ) : selectedBusiness ? (
-          <BusinessDetail 
-            business={selectedBusiness} 
+          <BusinessDetail
+            business={selectedBusiness}
             onBack={handleBack}
             otherBusinesses={otherBusinesses}
             onSelectBusiness={handleSelectBusiness}
@@ -4857,14 +4749,14 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
           />
         ) : (
           <>
-            <Carousel 
-              items={carouselPublicItems.length ? carouselPublicItems.map(it => ({ 
-                image_url: it.image_url, 
-                is_ad: it.is_ad, 
-                cta_text: it.cta_text || undefined, 
-                cta_url: it.cta_url || undefined 
-              })) : undefined} 
-              images={carouselPublicItems.length ? undefined : CAROUSEL_IMAGES} 
+            <Carousel
+              items={carouselPublicItems.length ? carouselPublicItems.map(it => ({
+                image_url: it.image_url,
+                is_ad: it.is_ad,
+                cta_text: it.cta_text || undefined,
+                cta_url: it.cta_url || undefined
+              })) : undefined}
+              images={carouselPublicItems.length ? undefined : CAROUSEL_IMAGES}
             />
             <div className="-mt-3">
               <SearchBar searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
@@ -4886,7 +4778,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                       <button
                         key={c.id}
                         onClick={async () => { setHomeCategoryId(c.id); setHomeSubcategoryId(''); setHomeLocationId(''); await fetchSubcategories(c.id); }}
-                        className={`h-12 px-6 rounded-full font-bold text-base shadow-md inline-flex items-center justify-center transition text-white ${['bg-orange-500','bg-yellow-400 text-slate-900','bg-cyan-500','bg-teal-500'][idx % 4]}`}
+                        className={`h-12 px-6 rounded-full font-bold text-base shadow-md inline-flex items-center justify-center transition text-white ${['bg-orange-500', 'bg-yellow-400 text-slate-900', 'bg-cyan-500', 'bg-teal-500'][idx % 4]}`}
                       >
                         {c.name}
                       </button>
@@ -4898,7 +4790,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                 {homeCategoryId && !homeSubcategoryId && (
                   <div className="space-y-3">
                     <div className="flex flex-wrap gap-2 justify-center items-center">
-                      <span className={`h-12 px-6 rounded-full font-bold text-base shadow-md inline-flex items-center justify-center ${['bg-orange-500 text-white','bg-yellow-400 text-slate-900','bg-cyan-500 text-white','bg-teal-500 text-white'][Math.max(0, categories.findIndex(c=>c.id===homeCategoryId)) % 4]}`}>{categories.find(c=>c.id===homeCategoryId)?.name}</span>
+                      <span className={`h-12 px-6 rounded-full font-bold text-base shadow-md inline-flex items-center justify-center ${['bg-orange-500 text-white', 'bg-yellow-400 text-slate-900', 'bg-cyan-500 text-white', 'bg-teal-500 text-white'][Math.max(0, categories.findIndex(c => c.id === homeCategoryId)) % 4]}`}>{categories.find(c => c.id === homeCategoryId)?.name}</span>
                       <button
                         onClick={async () => { setHomeCategoryId(''); setHomeSubcategoryId(''); setHomeLocationId(''); await fetchSubcategories(); }}
                         className="h-12 px-6 rounded-full font-bold text-base shadow-md inline-flex items-center justify-center bg-white text-gray-700 border hover:bg-gray-50"
@@ -4911,7 +4803,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                         <button
                           key={s.id}
                           onClick={() => { setHomeSubcategoryId(s.id); setHomeLocationId(''); }}
-                          className={`h-12 px-6 rounded-full font-bold text-base shadow-md inline-flex items-center justify-center transition ${['bg-orange-500 text-white','bg-yellow-400 text-slate-900','bg-cyan-500 text-white','bg-teal-500 text-white'][Math.max(0, categories.findIndex(c=>c.id===homeCategoryId)) % 4]}`}
+                          className={`h-12 px-6 rounded-full font-bold text-base shadow-md inline-flex items-center justify-center transition ${['bg-orange-500 text-white', 'bg-yellow-400 text-slate-900', 'bg-cyan-500 text-white', 'bg-teal-500 text-white'][Math.max(0, categories.findIndex(c => c.id === homeCategoryId)) % 4]}`}
                         >
                           {s.name}
                         </button>
@@ -4922,8 +4814,8 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                 {homeCategoryId && homeSubcategoryId && (
                   <div className="space-y-3">
                     <div className="flex flex-wrap gap-2 justify-center items-center">
-                      <span className={`h-12 px-6 rounded-full text-base font-semibold inline-flex items-center justify-center ${['bg-orange-500 text-white','bg-yellow-400 text-slate-900','bg-cyan-500 text-white','bg-teal-500 text-white'][Math.max(0, categories.findIndex(c=>c.id===homeCategoryId)) % 4]}`}>{categories.find(c=>c.id===homeCategoryId)?.name}</span>
-                      <span className={`h-12 px-6 rounded-full text-base font-semibold inline-flex items-center justify-center ${['bg-orange-500 text-white','bg-yellow-400 text-slate-900','bg-cyan-500 text-white','bg-teal-500 text-white'][Math.max(0, categories.findIndex(c=>c.id===homeCategoryId)) % 4]}`}>{subcategories.find(s=>s.id===homeSubcategoryId)?.name}</span>
+                      <span className={`h-12 px-6 rounded-full text-base font-semibold inline-flex items-center justify-center ${['bg-orange-500 text-white', 'bg-yellow-400 text-slate-900', 'bg-cyan-500 text-white', 'bg-teal-500 text-white'][Math.max(0, categories.findIndex(c => c.id === homeCategoryId)) % 4]}`}>{categories.find(c => c.id === homeCategoryId)?.name}</span>
+                      <span className={`h-12 px-6 rounded-full text-base font-semibold inline-flex items-center justify-center ${['bg-orange-500 text-white', 'bg-yellow-400 text-slate-900', 'bg-cyan-500 text-white', 'bg-teal-500 text-white'][Math.max(0, categories.findIndex(c => c.id === homeCategoryId)) % 4]}`}>{subcategories.find(s => s.id === homeSubcategoryId)?.name}</span>
                       <button
                         onClick={() => { setHomeSubcategoryId(''); setHomeLocationId(''); }}
                         className="h-12 px-6 rounded-full font-bold text-base shadow-md inline-flex items-center justify-center bg-white text-gray-700 border hover:bg-gray-50"
@@ -4943,7 +4835,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                         <button
                           key={l.id}
                           onClick={() => setHomeLocationId(l.id)}
-                          className={`h-12 px-4 rounded-full text-base font-semibold inline-flex items-center justify-center ${['bg-blue-100 text-blue-700','bg-purple-100 text-purple-700','bg-green-100 text-green-700','bg-orange-100 text-orange-700','bg-teal-100 text-teal-700'][idx % 5]} hover:brightness-95`}
+                          className={`h-12 px-4 rounded-full text-base font-semibold inline-flex items-center justify-center ${['bg-blue-100 text-blue-700', 'bg-purple-100 text-purple-700', 'bg-green-100 text-green-700', 'bg-orange-100 text-orange-700', 'bg-teal-100 text-teal-700'][idx % 5]} hover:brightness-95`}
                         >
                           {l.name}
                         </button>
@@ -4958,7 +4850,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                 <h3 className="text-2xl font-extrabold mb-3 text-slate-800 text-center">Filtrar por avaliações</h3>
                 <div className="flex flex-col items-center gap-2">
                   <div className="flex items-center gap-2" role="radiogroup" aria-label="Filtro por avaliações">
-                    {[1,2,3,4,5].map((n) => (
+                    {[1, 2, 3, 4, 5].map((n) => (
                       <button
                         key={n}
                         onClick={() => setHomeRatingMin(n)}
@@ -4969,7 +4861,7 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                         className="p-1.5 hover:scale-110 transition-transform"
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" className={`w-8 h-8 drop-shadow-sm ${homeRatingMin >= n ? 'text-slate-700' : 'text-slate-300'}`} viewBox="0 0 20 20" fill="currentColor">
-                          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" stroke="#003B63" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round"/>
+                          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" stroke="#003B63" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
                         </svg>
                       </button>
                     ))}
@@ -4980,9 +4872,9 @@ const businesses: Business[] = (data ?? []).map((b: any) => {
                 </div>
               </div>
 
-              <BusinessList 
-                businesses={filteredBusinesses} 
-                onBusinessSelect={handleSelectBusiness} 
+              <BusinessList
+                businesses={filteredBusinesses}
+                onBusinessSelect={handleSelectBusiness}
               />
             </div>
           </>
