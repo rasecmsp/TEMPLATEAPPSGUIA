@@ -63,8 +63,12 @@ const App: React.FC = () => {
   const [publicLoading, setPublicLoading] = useState(false);
   const [publicError, setPublicError] = useState<string | null>(null);
 
+  const { session } = useAuth();
   const { guide: contextGuide, updateGuideSettings: contextUpdateGuide, loading: guideLoading, error: guideError, refreshGuide } = useGuide();
   const [guide, setGuide] = useState<GuideSettings>(contextGuide);
+  const [faviconFile, setFaviconFile] = useState<File | null>(null);
+  const [splashFile, setSplashFile] = useState<File | null>(null);
+  const [iconFile, setIconFile] = useState<File | null>(null);
 
   useEffect(() => {
     if (contextGuide) setGuide(contextGuide);
@@ -1575,8 +1579,6 @@ const App: React.FC = () => {
 
   // Auth listener removed in favor of AuthContext
 
-  }, [view, isAdmin]);
-
   useEffect(() => {
     void fetchPublicBusinesses();
     void fetchPublicCarouselItems();
@@ -1586,7 +1588,7 @@ const App: React.FC = () => {
     // void fetchGuideSettings(); removed
   }, []);
 
-  }, [view, isAdmin, adminTab]);
+
 
   useEffect(() => {
     if (view === 'useful') void fetchPublicUsefulInfo();
