@@ -905,25 +905,10 @@ const App: React.FC = () => {
     setPageConfigLoading(true);
     try {
       let uploadedUrl = pageConfigs[slug]?.cover_url || '';
+      // Revert to using the helper function that works for other inputs
+      // This will save to branding/page-cover-TIMESTAMP.ext
       if (pageConfigCoverFile) {
-        // Direct upload to ensure we control the path and error handling
-        // Direct upload with sanitized filename to avoid bad request errors
-        const ext = pageConfigCoverFile.name.split('.').pop() || 'png';
-        const sanitizedSlug = slug.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-        const fileName = `page-assets/${sanitizedSlug}-${Date.now()}.${ext}`;
-
-        // Ensure bucket exists or handle error (we assume site-media exists based on other features)
-        const { error: uploadError } = await supabase.storage
-          .from('site-media')
-          .upload(fileName, pageConfigCoverFile, {
-            cacheControl: '3600',
-            upsert: false
-          });
-
-        if (uploadError) throw uploadError;
-
-        const { data } = supabase.storage.from('site-media').getPublicUrl(fileName);
-        uploadedUrl = data.publicUrl;
+        uploadedUrl = await uploadBrandFile(pageConfigCoverFile, `page-cover-${slug}`);
       }
 
       const payload = {
