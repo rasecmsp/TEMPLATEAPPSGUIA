@@ -193,7 +193,7 @@ const App: React.FC = () => {
   const [toursLoading, setToursLoading] = useState(false);
 
 
-  const uploadBrandFile = async (file: File, kind: 'favicon' | 'splash' | 'icon') => {
+  const uploadBrandFile = async (file: File, kind: string) => {
     const ext = file.name.split('.').pop() || 'png';
     const name = `branding/${kind}-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
     const { error } = await supabase.storage.from('site-media').upload(name, file, { cacheControl: '3600', upsert: false, contentType: file.type });
@@ -906,7 +906,22 @@ const App: React.FC = () => {
     try {
       let uploadedUrl = pageConfigs[slug]?.cover_url || '';
       if (pageConfigCoverFile) {
-        uploadedUrl = await uploadBrandFile(pageConfigCoverFile, 'guide-images' as any);
+        // Direct upload to ensure we control the path and error handling
+        const ext = pageConfigCoverFile.name.split('.').pop() || 'png';
+        const fileName = `page-assets/${slug}-${Date.now()}.${ext}`;
+
+        // Ensure bucket exists or handle error (we assume site-media exists based on other features)
+        const { error: uploadError } = await supabase.storage
+          .from('site-media')
+          .upload(fileName, pageConfigCoverFile, {
+            cacheControl: '3600',
+            upsert: false
+          });
+
+        if (uploadError) throw uploadError;
+
+        const { data } = supabase.storage.from('site-media').getPublicUrl(fileName);
+        uploadedUrl = data.publicUrl;
       }
 
       const payload = {
