@@ -43,9 +43,8 @@ const ComoChegarCard: React.FC<{ s: Section }> = ({ s }) => {
                 <button
                   key={index}
                   onClick={() => setMainImage(img)}
-                  className={`rounded-md overflow-hidden border-2 transition-all duration-200 ${
-                    mainImage === img ? 'border-[#00A2FF]' : 'border-transparent hover:border-gray-300'
-                  }`}
+                  className={`rounded-md overflow-hidden border-2 transition-all duration-200 ${mainImage === img ? 'border-[#00A2FF]' : 'border-transparent hover:border-gray-300'
+                    }`}
                 >
                   <img src={img} alt="" className="w-20 h-20 object-cover rounded-md" />
                 </button>
@@ -86,7 +85,7 @@ const ComoChegarCard: React.FC<{ s: Section }> = ({ s }) => {
   );
 };
 
-const ComoChegar: React.FC<{ onBack: () => void; onNext: () => void }> = ({ onBack, onNext }) => {
+const ComoChegar: React.FC<{ onBack: () => void; onNext: () => void; title?: string }> = ({ onBack, onNext, title }) => {
   const [sections, setSections] = useState<Section[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -116,7 +115,7 @@ const ComoChegar: React.FC<{ onBack: () => void; onNext: () => void }> = ({ onBa
             ← Voltar
           </button>
           <h1 className="text-2xl font-extrabold text-[#003B63] tracking-tight">
-            Como Chegar
+            {title || 'Como Chegar'}
           </h1>
           <button
             onClick={onNext}

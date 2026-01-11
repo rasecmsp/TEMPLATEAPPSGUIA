@@ -74,6 +74,10 @@ const App: React.FC = () => {
     if (contextGuide) setGuide(contextGuide);
   }, [contextGuide]);
 
+  useEffect(() => {
+    fetchPageConfigs();
+  }, []);
+
 
 
   const whatsappDigits = (guide.whatsapp || '').replace(/\D/g, '');
@@ -397,6 +401,15 @@ const App: React.FC = () => {
   const [comoChegarForm, setComoChegarForm] = useState<{ title: string; bullets: string; image_url: string; cta_text: string; cta_url: string; visible: boolean; sort_order: number }>({ title: '', bullets: '', image_url: '', cta_text: '', cta_url: '', visible: true, sort_order: 0 });
   const [comoChegarImageFile, setComoChegarImageFile] = useState<File | null>(null);
   const [comoChegarImagePreview, setComoChegarImagePreview] = useState<string>('');
+
+  // Page Configs State (SaaS)
+  const [pageConfigs, setPageConfigs] = useState<Record<string, { title: string; cover_url: string; active: boolean }>>({});
+  const [pageConfigLoading, setPageConfigLoading] = useState(false);
+  // Independent form states for each section managed inline or via effects
+  const [pageConfigTitle, setPageConfigTitle] = useState('');
+  const [pageConfigCoverFile, setPageConfigCoverFile] = useState<File | null>(null);
+  const [pageConfigCoverPreview, setPageConfigCoverPreview] = useState('');
+  const [pageConfigActive, setPageConfigActive] = useState(true);
 
 
 
@@ -871,6 +884,49 @@ const App: React.FC = () => {
       setCarouselPublicItems(data as CarouselItemDB[]);
     } catch (error: any) {
       console.error('Erro ao carregar carousel:', error);
+    }
+  };
+
+  const fetchPageConfigs = async () => {
+    try {
+      const { data, error } = await supabase.from('page_configurations').select('slug, title, cover_url, active');
+      if (error && error.code !== '42P01') console.error(error); // Ignore if table not exists yet
+      if (data) {
+        const mapping: Record<string, any> = {};
+        data.forEach(d => mapping[d.slug] = d);
+        setPageConfigs(mapping);
+      }
+    } catch (err) {
+      // silent
+    }
+  };
+
+  const savePageConfig = async (slug: string) => {
+    setPageConfigLoading(true);
+    try {
+      let uploadedUrl = pageConfigs[slug]?.cover_url || '';
+      if (pageConfigCoverFile) {
+        uploadedUrl = await uploadBrandFile(pageConfigCoverFile, 'guide-images' as any);
+      }
+
+      const payload = {
+        slug,
+        title: pageConfigTitle || (pageConfigs[slug]?.title ?? 'Título'),
+        cover_url: uploadedUrl,
+        active: pageConfigActive,
+        updated_at: new Date()
+      };
+
+      const { error } = await supabase.from('page_configurations').upsert(payload, { onConflict: 'slug' });
+      if (error) throw error;
+
+      alert('Configuração salva com sucesso!');
+      setPageConfigCoverFile(null);
+      await fetchPageConfigs();
+    } catch (err: any) {
+      alert('Erro ao salvar configuração: ' + err.message);
+    } finally {
+      setPageConfigLoading(false);
     }
   };
 
@@ -1887,6 +1943,93 @@ const App: React.FC = () => {
             {adminTab === 'comoChegar' && (
               <div>
                 <h2 className="text-2xl font-bold text-gray-800 mb-6 border-b pb-2">Como Chegar</h2>
+
+                {/* Page Config Editor */}
+                <div className="mb-8 bg-blue-50 p-6 rounded-lg border border-blue-200">
+                  <h3 className="font-bold text-blue-900 mb-4 text-lg">Personalizar Botão e Página (SaaS)</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-semibold mb-2 text-gray-700">Título Exibido no Menu</label>
+                      <input
+                        type="text"
+                        className="w-full border border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder={pageConfigs['como-chegar']?.title || 'Como Chegar'}
+                        value={pageConfigTitle}
+                        onChange={e => setPageConfigTitle(e.target.value)}
+                        onFocus={() => {
+                          if (!pageConfigTitle) setPageConfigTitle(pageConfigs['como-chegar']?.title || '');
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold mb-2 text-gray-700">Imagem de Capa do Botão</label>
+                      <div className="flex gap-4 items-center">
+                        {(pageConfigCoverPreview || pageConfigs['como-chegar']?.cover_url) && (
+                          <img src={pageConfigCoverPreview || pageConfigs['como-chegar']?.cover_url} className="h-16 w-16 object-cover rounded-lg border border-gray-300 shadow-sm" />
+                        )}
+                        <input type="file" onChange={e => {
+                          if (e.target.files?.[0]) {
+                            setPageConfigCoverFile(e.target.files[0]);
+                            setPageConfigCoverPreview(URL.createObjectURL(e.target.files[0]));
+                          }
+                        }} className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex justify-end">
+                    <button
+                      onClick={() => savePageConfig('como-chegar')}
+                      disabled={pageConfigLoading}
+                      className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 transition shadow-sm"
+                    >
+                      {pageConfigLoading ? 'Salvando...' : 'Salvar Configuração'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Page Config Editor */}
+                <div className="mb-8 bg-blue-50 p-6 rounded-lg border border-blue-200">
+                  <h3 className="font-bold text-blue-900 mb-4 text-lg">Personalizar Botão e Página (SaaS)</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-semibold mb-2 text-gray-700">Título Exibido no Menu</label>
+                      <input
+                        type="text"
+                        className="w-full border border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder={pageConfigs['como-chegar']?.title || 'Como Chegar'}
+                        value={pageConfigTitle}
+                        onChange={e => setPageConfigTitle(e.target.value)}
+                        onFocus={() => {
+                          if (!pageConfigTitle) setPageConfigTitle(pageConfigs['como-chegar']?.title || '');
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold mb-2 text-gray-700">Imagem de Capa do Botão</label>
+                      <div className="flex gap-4 items-center">
+                        {(pageConfigCoverPreview || pageConfigs['como-chegar']?.cover_url) && (
+                          <img src={pageConfigCoverPreview || pageConfigs['como-chegar']?.cover_url} className="h-16 w-16 object-cover rounded-lg border border-gray-300 shadow-sm" />
+                        )}
+                        <input type="file" onChange={e => {
+                          if (e.target.files?.[0]) {
+                            setPageConfigCoverFile(e.target.files[0]);
+                            setPageConfigCoverPreview(URL.createObjectURL(e.target.files[0]));
+                          }
+                        }} className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex justify-end">
+                    <button
+                      onClick={() => savePageConfig('como-chegar')}
+                      disabled={pageConfigLoading}
+                      className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 transition shadow-sm"
+                    >
+                      {pageConfigLoading ? 'Salvando...' : 'Salvar Configuração'}
+                    </button>
+                  </div>
+                </div>
+
                 <form onSubmit={createOrUpdateComoChegar} className="bg-gray-50 p-6 rounded-lg border border-gray-200 shadow-sm mb-8">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="col-span-2">
@@ -1952,6 +2095,49 @@ const App: React.FC = () => {
             {adminTab === 'tours' && (
               <div>
                 <h2 className="text-2xl font-bold text-gray-800 mb-6 border-b pb-2">Passeios & Atividades</h2>
+
+                {/* Page Config Editor */}
+                <div className="mb-8 bg-blue-50 p-6 rounded-lg border border-blue-200">
+                  <h3 className="font-bold text-blue-900 mb-4 text-lg">Personalizar Botão e Página (SaaS)</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-semibold mb-2 text-gray-700">Título Exibido no Menu</label>
+                      <input
+                        type="text"
+                        className="w-full border border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder={pageConfigs['tours']?.title || 'Passeios & Atividades'}
+                        value={pageConfigTitle}
+                        onChange={e => setPageConfigTitle(e.target.value)}
+                        onFocus={() => {
+                          if (!pageConfigTitle) setPageConfigTitle(pageConfigs['tours']?.title || '');
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold mb-2 text-gray-700">Imagem de Capa do Botão</label>
+                      <div className="flex gap-4 items-center">
+                        {(pageConfigCoverPreview || pageConfigs['tours']?.cover_url) && (
+                          <img src={pageConfigCoverPreview || pageConfigs['tours']?.cover_url} className="h-16 w-16 object-cover rounded-lg border border-gray-300 shadow-sm" />
+                        )}
+                        <input type="file" onChange={e => {
+                          if (e.target.files?.[0]) {
+                            setPageConfigCoverFile(e.target.files[0]);
+                            setPageConfigCoverPreview(URL.createObjectURL(e.target.files[0]));
+                          }
+                        }} className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex justify-end">
+                    <button
+                      onClick={() => savePageConfig('tours')}
+                      disabled={pageConfigLoading}
+                      className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 transition shadow-sm"
+                    >
+                      {pageConfigLoading ? 'Salvando...' : 'Salvar Configuração'}
+                    </button>
+                  </div>
+                </div>
                 <form onSubmit={createOrUpdateTour} className="bg-gray-50 p-6 rounded-lg border border-gray-200 shadow-sm mb-8">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="col-span-2">
@@ -2013,6 +2199,49 @@ const App: React.FC = () => {
             {adminTab === 'events' && (
               <div>
                 <h2 className="text-2xl font-bold text-gray-800 mb-6 border-b pb-2">Festas & Eventos</h2>
+
+                {/* Page Config Editor */}
+                <div className="mb-8 bg-blue-50 p-6 rounded-lg border border-blue-200">
+                  <h3 className="font-bold text-blue-900 mb-4 text-lg">Personalizar Botão e Página (SaaS)</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-semibold mb-2 text-gray-700">Título Exibido no Menu</label>
+                      <input
+                        type="text"
+                        className="w-full border border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder={pageConfigs['events']?.title || 'Festas & Eventos'}
+                        value={pageConfigTitle}
+                        onChange={e => setPageConfigTitle(e.target.value)}
+                        onFocus={() => {
+                          if (!pageConfigTitle) setPageConfigTitle(pageConfigs['events']?.title || '');
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold mb-2 text-gray-700">Imagem de Capa do Botão</label>
+                      <div className="flex gap-4 items-center">
+                        {(pageConfigCoverPreview || pageConfigs['events']?.cover_url) && (
+                          <img src={pageConfigCoverPreview || pageConfigs['events']?.cover_url} className="h-16 w-16 object-cover rounded-lg border border-gray-300 shadow-sm" />
+                        )}
+                        <input type="file" onChange={e => {
+                          if (e.target.files?.[0]) {
+                            setPageConfigCoverFile(e.target.files[0]);
+                            setPageConfigCoverPreview(URL.createObjectURL(e.target.files[0]));
+                          }
+                        }} className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex justify-end">
+                    <button
+                      onClick={() => savePageConfig('events')}
+                      disabled={pageConfigLoading}
+                      className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 transition shadow-sm"
+                    >
+                      {pageConfigLoading ? 'Salvando...' : 'Salvar Configuração'}
+                    </button>
+                  </div>
+                </div>
                 <form onSubmit={eventEditingId ? updateEvent : createEvent} className="bg-gray-50 p-6 rounded-lg border border-gray-200 shadow-sm mb-8">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="col-span-2">
@@ -2061,6 +2290,49 @@ const App: React.FC = () => {
             {adminTab === 'history' && (
               <div>
                 <h2 className="text-2xl font-bold text-gray-800 mb-6 border-b pb-2">Nossa História</h2>
+
+                {/* Page Config Editor */}
+                <div className="mb-8 bg-blue-50 p-6 rounded-lg border border-blue-200">
+                  <h3 className="font-bold text-blue-900 mb-4 text-lg">Personalizar Botão e Página (SaaS)</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-semibold mb-2 text-gray-700">Título Exibido no Menu</label>
+                      <input
+                        type="text"
+                        className="w-full border border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder={pageConfigs['history']?.title || 'Nossa História'}
+                        value={pageConfigTitle}
+                        onChange={e => setPageConfigTitle(e.target.value)}
+                        onFocus={() => {
+                          if (!pageConfigTitle) setPageConfigTitle(pageConfigs['history']?.title || '');
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold mb-2 text-gray-700">Imagem de Capa do Botão</label>
+                      <div className="flex gap-4 items-center">
+                        {(pageConfigCoverPreview || pageConfigs['history']?.cover_url) && (
+                          <img src={pageConfigCoverPreview || pageConfigs['history']?.cover_url} className="h-16 w-16 object-cover rounded-lg border border-gray-300 shadow-sm" />
+                        )}
+                        <input type="file" onChange={e => {
+                          if (e.target.files?.[0]) {
+                            setPageConfigCoverFile(e.target.files[0]);
+                            setPageConfigCoverPreview(URL.createObjectURL(e.target.files[0]));
+                          }
+                        }} className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex justify-end">
+                    <button
+                      onClick={() => savePageConfig('history')}
+                      disabled={pageConfigLoading}
+                      className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 transition shadow-sm"
+                    >
+                      {pageConfigLoading ? 'Salvando...' : 'Salvar Configuração'}
+                    </button>
+                  </div>
+                </div>
                 <form onSubmit={saveHistoryBody} className="mb-8">
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Texto da História</label>
                   <textarea value={historyBody} onChange={e => setHistoryBody(e.target.value)} className="w-full border rounded p-4 h-64 shadow-inner" placeholder="Escreva a história aqui..." />
@@ -2105,6 +2377,7 @@ const App: React.FC = () => {
       <main className="pb-24">
         {view === 'comoChegar' ? (
           <ComoChegar
+            title={pageConfigs['como-chegar']?.title}
             onBack={() => setView('none')}
             onNext={() => setView('events')}
           />
@@ -2147,7 +2420,7 @@ const App: React.FC = () => {
               <div className="container mx-auto px-4 max-w-3xl">
                 <div className="flex items-center justify-between py-3">
                   <button onClick={() => setView('none')} className="px-4 py-1.5 rounded-full bg-gray-300 text-gray-800 text-sm font-semibold">Voltar</button>
-                  <h2 className="text-2xl font-bold text-[#003B63]">Festas & Eventos</h2>
+                  <h2 className="text-2xl font-bold text-[#003B63]">{pageConfigs['events']?.title || 'Festas & Eventos'}</h2>
                   <button onClick={() => setView('historyPage')} className="px-4 py-1.5 rounded-full bg-gray-300 text-gray-800 text-sm font-semibold">Próximo</button>
                 </div>
               </div>
@@ -2421,7 +2694,7 @@ const App: React.FC = () => {
               <div className="container mx-auto px-4 max-w-4xl">
                 <div className="grid grid-cols-3 items-center py-3">
                   <button onClick={() => setView('none')} className="justify-self-start px-4 py-1.5 rounded-full bg-gray-300 text-gray-800 text-sm font-semibold">Voltar</button>
-                  <h2 className="col-start-2 text-center text-2xl font-bold text-[#003B63]">Passeios</h2>
+                  <h2 className="col-start-2 text-center text-2xl font-bold text-[#003B63]">{pageConfigs['tours']?.title || 'Passeios & Atividades'}</h2>
                 </div>
               </div>
             </div>
@@ -2478,7 +2751,7 @@ const App: React.FC = () => {
               <div className="container mx-auto px-4 max-w-3xl">
                 <div className="flex items-center justify-between py-3">
                   <button onClick={() => setView('none')} className="px-4 py-1.5 rounded-full bg-gray-300 text-gray-800 text-sm font-semibold">Voltar</button>
-                  <h2 className="text-2xl font-bold text-[#003B63]">Nossa História</h2>
+                  <h2 className="text-2xl font-bold text-[#003B63]">{pageConfigs['history']?.title || 'Nossa História'}</h2>
                   <button onClick={() => setView('tours')} className="px-4 py-1.5 rounded-full bg-gray-300 text-gray-800 text-sm font-semibold">Próximo</button>
                 </div>
               </div>
@@ -2537,7 +2810,15 @@ const App: React.FC = () => {
               <SearchBar searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
             </div>
             <div className="container mx-auto px-4 mt-8">
-              <ActionButtons onGoToComoChegar={openComoChegar} onGoToHistory={openHistoryPublic} onGoToPhotos={openPhotos} onGoToEvents={openEvents} onGoToTours={openTours} />
+
+              <ActionButtons
+                onGoToComoChegar={openComoChegar}
+                onGoToHistory={openHistoryPublic}
+                onGoToPhotos={openPhotos}
+                onGoToEvents={openEvents}
+                onGoToTours={openTours}
+                pageConfigs={pageConfigs}
+              />
               <div className="mb-6">
                 <h2 className="text-2xl font-extrabold text-slate-800 mb-4 text-center">Explore por Categoria</h2>
                 {/* NÃ­vel 1: Categorias */}
