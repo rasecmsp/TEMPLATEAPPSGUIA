@@ -63,7 +63,7 @@ const App: React.FC = () => {
   const [publicLoading, setPublicLoading] = useState(false);
   const [publicError, setPublicError] = useState<string | null>(null);
 
-  const { session } = useAuth();
+  const { session, isAdmin } = useAuth();
   const { guide: contextGuide, updateGuideSettings: contextUpdateGuide, loading: guideLoading, error: guideError, refreshGuide } = useGuide();
   const [guide, setGuide] = useState<GuideSettings>(contextGuide);
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
@@ -388,6 +388,17 @@ const App: React.FC = () => {
   const [toursForm, setToursForm] = useState<{ title: string; bullets: string; image_url: string; cta_text: string; cta_url: string; visible: boolean; sort_order: number }>({ title: '', bullets: '', image_url: '', cta_text: '', cta_url: '', visible: true, sort_order: 0 });
   const [toursImageFile, setToursImageFile] = useState<File | null>(null);
   const [toursImagePreview, setToursImagePreview] = useState<string>('');
+
+  // Como Chegar - Admin State
+  const [comoChegarSections, setComoChegarSections] = useState<any[]>([]);
+  const [comoChegarLoading, setComoChegarLoading] = useState(false);
+  const [comoChegarError, setComoChegarError] = useState<string | null>(null);
+  const [comoChegarEditingId, setComoChegarEditingId] = useState<string | null>(null);
+  const [comoChegarForm, setComoChegarForm] = useState<{ title: string; bullets: string; image_url: string; cta_text: string; cta_url: string; visible: boolean; sort_order: number }>({ title: '', bullets: '', image_url: '', cta_text: '', cta_url: '', visible: true, sort_order: 0 });
+  const [comoChegarImageFile, setComoChegarImageFile] = useState<File | null>(null);
+  const [comoChegarImagePreview, setComoChegarImagePreview] = useState<string>('');
+
+
 
   // Active taxonomies with at least one approved business
   const activeCategoryIds = useMemo(() => {
@@ -1190,6 +1201,172 @@ const App: React.FC = () => {
   };
 
   // FunÃ§Ãµes para history
+  // Funções Admin Como Chegar
+  const fetchComoChegarSections = async () => {
+    setComoChegarLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('como_chegar_sections')
+        .select('*')
+        .order('sort_order', { ascending: true });
+      if (error) throw error;
+      setComoChegarSections(data || []);
+    } catch (err: any) {
+      setComoChegarError(err.message);
+    } finally {
+      setComoChegarLoading(false);
+    }
+  };
+
+  const createOrUpdateComoChegar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setComoChegarLoading(true);
+    setComoChegarError(null);
+    try {
+      let uploadedUrl: string | null = null;
+      if (comoChegarImageFile) {
+        uploadedUrl = await uploadBrandFile(comoChegarImageFile, 'guide-images' as any);
+      }
+
+      const payload = {
+        title: comoChegarForm.title,
+        bullets: comoChegarForm.bullets.split('\\n').filter(x => x.trim()),
+        image_url: uploadedUrl || comoChegarForm.image_url || null,
+        cta_text: comoChegarForm.cta_text || null,
+        cta_url: comoChegarForm.cta_url || null,
+        visible: comoChegarForm.visible,
+        sort_order: comoChegarForm.sort_order
+      };
+
+      if (comoChegarEditingId) {
+        const { error } = await supabase.from('como_chegar_sections').update(payload).eq('id', comoChegarEditingId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('como_chegar_sections').insert([payload]);
+        if (error) throw error;
+      }
+      setComoChegarEditingId(null);
+      setComoChegarForm({ title: '', bullets: '', image_url: '', cta_text: '', cta_url: '', visible: true, sort_order: 0 });
+      setComoChegarImageFile(null);
+      setComoChegarImagePreview('');
+      await fetchComoChegarSections();
+    } catch (err: any) {
+      setComoChegarError(err.message);
+    } finally {
+      setComoChegarLoading(false);
+    }
+  };
+
+  const deleteComoChegar = async (id: string) => {
+    if (!confirm('Excluir esta seção?')) return;
+    try {
+      const { error } = await supabase.from('como_chegar_sections').delete().eq('id', id);
+      if (error) throw error;
+      await fetchComoChegarSections();
+    } catch (err: any) {
+      setComoChegarError(err.message);
+    }
+  };
+
+  const editComoChegar = (item: any) => {
+    setComoChegarEditingId(item.id);
+    setComoChegarForm({
+      title: item.title || '',
+      bullets: Array.isArray(item.bullets) ? item.bullets.join('\\n') : '',
+      image_url: item.image_url || '',
+      cta_text: item.cta_text || '',
+      cta_url: item.cta_url || '',
+      visible: !!item.visible,
+      sort_order: item.sort_order || 0
+    });
+    setComoChegarImagePreview(item.image_url || '');
+    setComoChegarImageFile(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Funções Admin Tours (Passeios)
+  const fetchToursSectionsAdmin = async () => {
+    setToursAdminLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('tours_sections')
+        .select('*')
+        .order('sort_order', { ascending: true });
+      if (error) throw error;
+      setToursAdmin(data || []);
+    } catch (err: any) {
+      setToursAdminError(err.message);
+    } finally {
+      setToursAdminLoading(false);
+    }
+  };
+
+  const createOrUpdateTour = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setToursAdminLoading(true);
+    setToursAdminError(null);
+    try {
+      let uploadedUrl: string | null = null;
+      if (toursImageFile) {
+        uploadedUrl = await uploadBrandFile(toursImageFile, 'guide-images' as any);
+      }
+
+      const payload = {
+        title: toursForm.title,
+        bullets: toursForm.bullets.split('\\n').filter(x => x.trim()),
+        image_url: uploadedUrl || toursForm.image_url || null,
+        cta_text: toursForm.cta_text || null,
+        cta_url: toursForm.cta_url || null,
+        visible: toursForm.visible,
+        sort_order: toursForm.sort_order
+      };
+
+      if (toursEditingId) {
+        const { error } = await supabase.from('tours_sections').update(payload).eq('id', toursEditingId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('tours_sections').insert([payload]);
+        if (error) throw error;
+      }
+      setToursEditingId(null);
+      setToursForm({ title: '', bullets: '', image_url: '', cta_text: '', cta_url: '', visible: true, sort_order: 0 });
+      setToursImageFile(null);
+      setToursImagePreview('');
+      await fetchToursSectionsAdmin();
+    } catch (err: any) {
+      setToursAdminError(err.message);
+    } finally {
+      setToursAdminLoading(false);
+    }
+  };
+
+  const deleteTour = async (id: string) => {
+    if (!confirm('Excluir este passeio?')) return;
+    try {
+      const { error } = await supabase.from('tours_sections').delete().eq('id', id);
+      if (error) throw error;
+      await fetchToursSectionsAdmin();
+    } catch (err: any) {
+      setToursAdminError(err.message);
+    }
+  };
+
+  const editTour = (item: any) => {
+    setToursEditingId(item.id);
+    setToursForm({
+      title: item.title || '',
+      bullets: Array.isArray(item.bullets) ? item.bullets.join('\\n') : '',
+      image_url: item.image_url || '',
+      cta_text: item.cta_text || '',
+      cta_url: item.cta_url || '',
+      visible: !!item.visible,
+      sort_order: item.sort_order || 0
+    });
+    setToursImagePreview(item.image_url || '');
+    setToursImageFile(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const fetchHistoryBody = async () => {
     setHistoryLoading(true);
     setHistoryError(null);
@@ -1606,6 +1783,256 @@ const App: React.FC = () => {
     }
     if (view === 'events') void fetchPublicEvents();
   }, [view, phonesCatId]);
+
+  useEffect(() => {
+    if (isAdmin) {
+      // Carregar dados admin iniciais se necessário
+      fetchEvents();
+      fetchHistoryBody();
+      fetchHistoryImages();
+      fetchToursSectionsAdmin(); // Nossas novas funções
+      fetchComoChegarSections(); // Nossas novas funções
+    }
+  }, [isAdmin]);
+
+  if (isAdmin) {
+    return (
+      <div className="flex h-screen bg-gray-100 font-sans">
+        {/* Sidebar */}
+        <aside className="w-64 bg-[#003B63] text-white flex flex-col shadow-lg overflow-y-auto">
+          <div className="p-6 border-b border-[#00558F]">
+            <h1 className="text-xl font-bold tracking-tight">Painel Admin</h1>
+            <p className="text-sm opacity-75 mt-1">{guide.app_name || 'Guia'}</p>
+          </div>
+          <nav className="flex-1 p-4 space-y-1">
+            <button onClick={() => setAdminTab('comoChegar')} className={`w-full text-left px-4 py-3 rounded-lg transition-colors ${adminTab === 'comoChegar' ? 'bg-[#002845] font-semibold shadow-inner' : 'hover:bg-[#00558F]'}`}>Como Chegar</button>
+            <button onClick={() => setAdminTab('events')} className={`w-full text-left px-4 py-3 rounded-lg transition-colors ${adminTab === 'events' ? 'bg-[#002845] font-semibold shadow-inner' : 'hover:bg-[#00558F]'}`}>Festas & Eventos</button>
+            <button onClick={() => setAdminTab('history')} className={`w-full text-left px-4 py-3 rounded-lg transition-colors ${adminTab === 'history' ? 'bg-[#002845] font-semibold shadow-inner' : 'hover:bg-[#00558F]'}`}>Nossa História</button>
+            <button onClick={() => setAdminTab('tours')} className={`w-full text-left px-4 py-3 rounded-lg transition-colors ${adminTab === 'tours' ? 'bg-[#002845] font-semibold shadow-inner' : 'hover:bg-[#00558F]'}`}>Passeios & Atividades</button>
+            <div className="border-t border-[#00558F] my-2"></div>
+            <button onClick={() => { supabase.auth.signOut(); window.location.reload(); }} className="w-full text-left px-4 py-3 rounded-lg hover:bg-red-700/50 text-red-100">Sair</button>
+          </nav>
+        </aside>
+
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto bg-gray-50 p-8">
+          <div className="max-w-5xl mx-auto bg-white rounded-xl shadow-sm border border-gray-200 min-h-[500px] p-6">
+
+            {/* Como Chegar */}
+            {adminTab === 'comoChegar' && (
+              <div>
+                <h2 className="text-2xl font-bold text-gray-800 mb-6 border-b pb-2">Como Chegar</h2>
+                <form onSubmit={createOrUpdateComoChegar} className="bg-gray-50 p-6 rounded-lg border border-gray-200 shadow-sm mb-8">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="col-span-2">
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Título da Seção</label>
+                      <input type="text" value={comoChegarForm.title} onChange={e => setComoChegarForm({ ...comoChegarForm, title: e.target.value })} className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition" required placeholder="Ex: De Avião" />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Texto / Pontos (um por linha)</label>
+                      <textarea value={comoChegarForm.bullets} onChange={e => setComoChegarForm({ ...comoChegarForm, bullets: e.target.value })} className="w-full border border-gray-300 rounded-lg p-2.5 h-32 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition" placeholder="Ex: Voe para o aeroporto X\nPegue o transfer Y" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Imagem</label>
+                      <input type="file" accept="image/*" onChange={e => { const f = e.target.files?.[0]; if (f) { setComoChegarImageFile(f); setComoChegarImagePreview(URL.createObjectURL(f)); } }} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-cyan-50 file:text-cyan-700 hover:file:bg-cyan-100" />
+                      {comoChegarImagePreview && <img src={comoChegarImagePreview} className="mt-2 h-24 rounded border object-cover" alt="Preview" />}
+                    </div>
+                    <div className="flex items-center pt-6">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={comoChegarForm.visible} onChange={e => setComoChegarForm({ ...comoChegarForm, visible: e.target.checked })} className="w-5 h-5 text-cyan-600 rounded border-gray-300 focus:ring-cyan-500" />
+                        <span className="text-gray-700 font-medium">Visível no app?</span>
+                      </label>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Botão Texto (Opcional)</label>
+                      <input type="text" value={comoChegarForm.cta_text} onChange={e => setComoChegarForm({ ...comoChegarForm, cta_text: e.target.value })} className="w-full border rounded p-2.5" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Botão Link (Opcional)</label>
+                      <input type="text" value={comoChegarForm.cta_url} onChange={e => setComoChegarForm({ ...comoChegarForm, cta_url: e.target.value })} className="w-full border rounded p-2.5" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Ordem</label>
+                      <input type="number" value={comoChegarForm.sort_order} onChange={e => setComoChegarForm({ ...comoChegarForm, sort_order: Number(e.target.value) })} className="w-full border rounded p-2.5" />
+                    </div>
+                  </div>
+                  <div className="mt-5 flex gap-3">
+                    <button type="submit" className="px-6 py-2.5 bg-cyan-600 text-white rounded-lg font-semibold shadow hover:bg-cyan-700 transition">{comoChegarEditingId ? 'Atualizar' : 'Adicionar'}</button>
+                    {comoChegarEditingId && <button type="button" onClick={() => { setComoChegarEditingId(null); setComoChegarForm({ title: '', bullets: '', image_url: '', cta_text: '', cta_url: '', visible: true, sort_order: 0 }); setComoChegarImageFile(null); setComoChegarImagePreview(''); }} className="px-6 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">Cancelar</button>}
+                  </div>
+                </form>
+                {comoChegarLoading && <p className="text-center text-gray-500 my-4">Carregando...</p>}
+                <div className="space-y-4">
+                  {comoChegarSections.map(item => (
+                    <div key={item.id} className="border border-gray-200 rounded-lg p-4 flex justify-between items-start bg-gray-50 hover:bg-white transition-colors">
+                      <div className="flex gap-4">
+                        {item.image_url && <img src={item.image_url} className="w-20 h-20 object-cover rounded shadow-sm" alt="" />}
+                        <div>
+                          <h3 className="font-bold text-gray-800 text-lg">{item.title}</h3>
+                          <p className="text-sm text-gray-600 line-clamp-2">{Array.isArray(item.bullets) ? item.bullets.join(', ') : ''}</p>
+                          <span className={`inline-block mt-1 px-2 py-0.5 text-xs rounded-full ${item.visible ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{item.visible ? 'Visível' : 'Oculto'}</span>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => editComoChegar(item)} className="p-2 text-blue-600 hover:bg-blue-50 rounded transition" title="Editar"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg></button>
+                        <button onClick={() => deleteComoChegar(item.id)} className="p-2 text-red-600 hover:bg-red-50 rounded transition" title="Excluir"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Tours (Passeios) */}
+            {adminTab === 'tours' && (
+              <div>
+                <h2 className="text-2xl font-bold text-gray-800 mb-6 border-b pb-2">Passeios & Atividades</h2>
+                <form onSubmit={createOrUpdateTour} className="bg-gray-50 p-6 rounded-lg border border-gray-200 shadow-sm mb-8">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="col-span-2">
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Nome do Passeio</label>
+                      <input type="text" value={toursForm.title} onChange={e => setToursForm({ ...toursForm, title: e.target.value })} className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition" required placeholder="Ex: Passeio de Barco" />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Destaques (um por linha)</label>
+                      <textarea value={toursForm.bullets} onChange={e => setToursForm({ ...toursForm, bullets: e.target.value })} className="w-full border border-gray-300 rounded-lg p-2.5 h-32 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition" placeholder="Ex: Duração 2h\nInclui Bebidas" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Foto Ilustrativa</label>
+                      <input type="file" accept="image/*" onChange={e => { const f = e.target.files?.[0]; if (f) { setToursImageFile(f); setToursImagePreview(URL.createObjectURL(f)); } }} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-cyan-50 file:text-cyan-700 hover:file:bg-cyan-100" />
+                      {toursImagePreview && <img src={toursImagePreview} className="mt-2 h-24 rounded border object-cover" alt="Preview" />}
+                    </div>
+                    <div className="flex items-center pt-6">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={toursForm.visible} onChange={e => setToursForm({ ...toursForm, visible: e.target.checked })} className="w-5 h-5 text-cyan-600 rounded border-gray-300 focus:ring-cyan-500" />
+                        <span className="text-gray-700 font-medium">Visível?</span>
+                      </label>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Botão Texto</label>
+                      <input type="text" value={toursForm.cta_text} onChange={e => setToursForm({ ...toursForm, cta_text: e.target.value })} className="w-full border rounded p-2.5" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Botão Link</label>
+                      <input type="text" value={toursForm.cta_url} onChange={e => setToursForm({ ...toursForm, cta_url: e.target.value })} className="w-full border rounded p-2.5" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Ordem</label>
+                      <input type="number" value={toursForm.sort_order} onChange={e => setToursForm({ ...toursForm, sort_order: Number(e.target.value) })} className="w-full border rounded p-2.5" />
+                    </div>
+                  </div>
+                  <div className="mt-5 flex gap-3">
+                    <button type="submit" className="px-6 py-2.5 bg-cyan-600 text-white rounded-lg font-semibold shadow hover:bg-cyan-700 transition">{toursEditingId ? 'Atualizar' : 'Adicionar'}</button>
+                    {toursEditingId && <button type="button" onClick={() => { setToursEditingId(null); setToursForm({ title: '', bullets: '', image_url: '', cta_text: '', cta_url: '', visible: true, sort_order: 0 }); setToursImageFile(null); setToursImagePreview(''); }} className="px-6 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">Cancelar</button>}
+                  </div>
+                </form>
+                {toursAdminLoading && <p>Carregando...</p>}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {toursAdmin.map(item => (
+                    <div key={item.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50 flex gap-4">
+                      {item.image_url && <img src={item.image_url} className="w-24 h-24 object-cover rounded" alt="" />}
+                      <div className="flex-1">
+                        <h4 className="font-bold">{item.title}</h4>
+                        <div className="flex gap-2 mt-2">
+                          <button onClick={() => editTour(item)} className="text-sm bg-blue-100 text-blue-700 px-3 py-1 rounded">Editar</button>
+                          <button onClick={() => deleteTour(item.id)} className="text-sm bg-red-100 text-red-700 px-3 py-1 rounded">Excluir</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Events (Festas) */}
+            {adminTab === 'events' && (
+              <div>
+                <h2 className="text-2xl font-bold text-gray-800 mb-6 border-b pb-2">Festas & Eventos</h2>
+                <form onSubmit={eventEditingId ? updateEvent : createEvent} className="bg-gray-50 p-6 rounded-lg border border-gray-200 shadow-sm mb-8">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="col-span-2">
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Título</label>
+                      <input type="text" value={eventForm.title} onChange={e => setEventForm({ ...eventForm, title: e.target.value })} className="w-full border rounded p-2.5" required />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Data</label>
+                      <input type="date" value={eventForm.date} onChange={e => setEventForm({ ...eventForm, date: e.target.value })} className="w-full border rounded p-2.5" required />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Hora (Opcional)</label>
+                      <input type="time" value={eventForm.time} onChange={e => setEventForm({ ...eventForm, time: e.target.value })} className="w-full border rounded p-2.5" />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Banner</label>
+                      <input type="file" onChange={e => setEventBannerFile(e.target.files?.[0] || null)} className="w-full" />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Descrição</label>
+                      <textarea value={eventForm.description} onChange={e => setEventForm({ ...eventForm, description: e.target.value })} className="w-full border rounded p-2.5 h-24" />
+                    </div>
+                  </div>
+                  <div className="mt-4">
+                    <button type="submit" className="px-6 py-2.5 bg-cyan-600 text-white rounded font-semibold">{eventEditingId ? 'Salvar' : 'Criar Evento'}</button>
+                  </div>
+                </form>
+                <div className="space-y-4">
+                  {events.map(ev => (
+                    <div key={ev.id} className="border p-4 rounded bg-white flex justify-between items-center">
+                      <div>
+                        <h3 className="font-bold">{ev.title}</h3>
+                        <p className="text-sm text-gray-600">{ev.date} {ev.time}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => editEvent(ev)} className="bg-blue-100 text-blue-700 px-3 py-1 rounded">Editar</button>
+                        <button onClick={() => deleteEvent(String(ev.id))} className="bg-red-100 text-red-700 px-3 py-1 rounded">Excluir</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* History */}
+            {adminTab === 'history' && (
+              <div>
+                <h2 className="text-2xl font-bold text-gray-800 mb-6 border-b pb-2">Nossa História</h2>
+                <form onSubmit={saveHistoryBody} className="mb-8">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Texto da História</label>
+                  <textarea value={historyBody} onChange={e => setHistoryBody(e.target.value)} className="w-full border rounded p-4 h-64 shadow-inner" placeholder="Escreva a história aqui..." />
+                  <button type="submit" className="mt-3 px-6 py-2 bg-green-600 text-white rounded font-semibold">Salvar Texto</button>
+                </form>
+
+                <div className="border-t pt-6">
+                  <h3 className="text-lg font-bold mb-4">Galeria da História</h3>
+                  <form onSubmit={uploadHistoryImage} className="flex gap-4 items-end mb-6">
+                    <div className="flex-1">
+                      <label className="block text-sm font-medium mb-1">Nova Imagem</label>
+                      <input type="file" onChange={e => setHistoryFile(e.target.files?.[0] || null)} className="w-full" />
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-sm font-medium mb-1">Legenda</label>
+                      <input type="text" value={historyCaption} onChange={e => setHistoryCaption(e.target.value)} className="w-full border rounded p-2" />
+                    </div>
+                    <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">Upload</button>
+                  </form>
+                  <div className="grid grid-cols-3 gap-4">
+                    {historyImages.map(img => (
+                      <div key={img.id} className="border rounded p-2 relative group">
+                        <img src={img.image_url} className="w-full h-32 object-cover rounded" alt="" />
+                        <p className="text-xs mt-1 truncate">{img.caption}</p>
+                        <button onClick={() => deleteHistoryImage(img.id)} className="absolute top-1 right-1 bg-red-600 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition">X</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-orange-50 min-h-screen font-sans" style={{ backgroundColor: view === 'none' ? '#ebf7f6ff' : undefined }}>
