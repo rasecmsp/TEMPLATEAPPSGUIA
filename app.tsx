@@ -907,8 +907,10 @@ const App: React.FC = () => {
       let uploadedUrl = pageConfigs[slug]?.cover_url || '';
       if (pageConfigCoverFile) {
         // Direct upload to ensure we control the path and error handling
+        // Direct upload with sanitized filename to avoid bad request errors
         const ext = pageConfigCoverFile.name.split('.').pop() || 'png';
-        const fileName = `page-assets/${slug}-${Date.now()}.${ext}`;
+        const sanitizedSlug = slug.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        const fileName = `page-assets/${sanitizedSlug}-${Date.now()}.${ext}`;
 
         // Ensure bucket exists or handle error (we assume site-media exists based on other features)
         const { error: uploadError } = await supabase.storage
