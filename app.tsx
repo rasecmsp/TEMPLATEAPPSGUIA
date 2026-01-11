@@ -240,7 +240,7 @@ const App: React.FC = () => {
   // Rating filter (min stars)
   const [homeRatingMin, setHomeRatingMin] = useState<number>(0);
 
-  const [adminTab, setAdminTab] = useState<'businesses' | 'events' | 'phones' | 'useful' | 'history' | 'photos' | 'carousel' | 'categories' | 'comoChegar' | 'tours' | 'plans' | 'guide'>('businesses');
+  const [adminTab, setAdminTab] = useState<'businesses' | 'events' | 'phones' | 'useful' | 'history' | 'photos' | 'carousel' | 'categories' | 'comoChegar' | 'tours' | 'plans' | 'guide'>('comoChegar');
   const [carouselAdminItems, setCarouselAdminItems] = useState<CarouselItemDB[]>([]);
   const [carouselPublicItems, setCarouselPublicItems] = useState<CarouselItemDB[]>([]);
   const [carouselLoading, setCarouselLoading] = useState(false);
