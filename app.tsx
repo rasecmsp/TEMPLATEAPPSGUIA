@@ -1991,63 +1991,17 @@ const App: React.FC = () => {
 
 
 
-                <form onSubmit={createOrUpdateComoChegar} className="bg-gray-50 p-6 rounded-lg border border-gray-200 shadow-sm mb-8">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="col-span-2">
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Título da Seção</label>
-                      <input type="text" value={comoChegarForm.title} onChange={e => setComoChegarForm({ ...comoChegarForm, title: e.target.value })} className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition" required placeholder="Ex: De Avião" />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Texto / Pontos (um por linha)</label>
-                      <textarea value={comoChegarForm.bullets} onChange={e => setComoChegarForm({ ...comoChegarForm, bullets: e.target.value })} className="w-full border border-gray-300 rounded-lg p-2.5 h-32 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition" placeholder="Ex: Voe para o aeroporto X\nPegue o transfer Y" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Imagem</label>
-                      <input type="file" accept="image/*" onChange={e => { const f = e.target.files?.[0]; if (f) { setComoChegarImageFile(f); setComoChegarImagePreview(URL.createObjectURL(f)); } }} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-cyan-50 file:text-cyan-700 hover:file:bg-cyan-100" />
-                      {comoChegarImagePreview && <img src={comoChegarImagePreview} className="mt-2 h-24 rounded border object-cover" alt="Preview" />}
-                    </div>
-                    <div className="flex items-center pt-6">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={comoChegarForm.visible} onChange={e => setComoChegarForm({ ...comoChegarForm, visible: e.target.checked })} className="w-5 h-5 text-cyan-600 rounded border-gray-300 focus:ring-cyan-500" />
-                        <span className="text-gray-700 font-medium">Visível no app?</span>
-                      </label>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Botão Texto (Opcional)</label>
-                      <input type="text" value={comoChegarForm.cta_text} onChange={e => setComoChegarForm({ ...comoChegarForm, cta_text: e.target.value })} className="w-full border rounded p-2.5" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Botão Link (Opcional)</label>
-                      <input type="text" value={comoChegarForm.cta_url} onChange={e => setComoChegarForm({ ...comoChegarForm, cta_url: e.target.value })} className="w-full border rounded p-2.5" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Ordem</label>
-                      <input type="number" value={comoChegarForm.sort_order} onChange={e => setComoChegarForm({ ...comoChegarForm, sort_order: Number(e.target.value) })} className="w-full border rounded p-2.5" />
-                    </div>
-                  </div>
-                  <div className="mt-5 flex gap-3">
-                    <button type="submit" className="px-6 py-2.5 bg-cyan-600 text-white rounded-lg font-semibold shadow hover:bg-cyan-700 transition">{comoChegarEditingId ? 'Atualizar' : 'Adicionar'}</button>
-                    {comoChegarEditingId && <button type="button" onClick={() => { setComoChegarEditingId(null); setComoChegarForm({ title: '', bullets: '', image_url: '', cta_text: '', cta_url: '', visible: true, sort_order: 0 }); setComoChegarImageFile(null); setComoChegarImagePreview(''); }} className="px-6 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">Cancelar</button>}
-                  </div>
+                {/* Content Editor Hidden for SaaS Mode
+                <form onSubmit={createOrUpdateComoChegar} ... >
+                  ...
                 </form>
-                {comoChegarLoading && <p className="text-center text-gray-500 my-4">Carregando...</p>}
+                {comoChegarLoading && ...}
                 <div className="space-y-4">
-                  {comoChegarSections.map(item => (
-                    <div key={item.id} className="border border-gray-200 rounded-lg p-4 flex justify-between items-start bg-gray-50 hover:bg-white transition-colors">
-                      <div className="flex gap-4">
-                        {item.image_url && <img src={item.image_url} className="w-20 h-20 object-cover rounded shadow-sm" alt="" />}
-                        <div>
-                          <h3 className="font-bold text-gray-800 text-lg">{item.title}</h3>
-                          <p className="text-sm text-gray-600 line-clamp-2">{Array.isArray(item.bullets) ? item.bullets.join(', ') : ''}</p>
-                          <span className={`inline-block mt-1 px-2 py-0.5 text-xs rounded-full ${item.visible ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{item.visible ? 'Visível' : 'Oculto'}</span>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <button onClick={() => editComoChegar(item)} className="p-2 text-blue-600 hover:bg-blue-50 rounded transition" title="Editar"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg></button>
-                        <button onClick={() => deleteComoChegar(item.id)} className="p-2 text-red-600 hover:bg-red-50 rounded transition" title="Excluir"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
-                      </div>
-                    </div>
-                  ))}
+                  ...
+                </div>
+                */}
+                <div className="bg-yellow-50 p-4 rounded border border-yellow-200 text-yellow-800 text-sm">
+                  O conteúdo desta página será gerenciado pelo novo editor visual (em breve).
                 </div>
               </div>
             )}
@@ -2099,59 +2053,13 @@ const App: React.FC = () => {
                     </button>
                   </div>
                 </div>
-                <form onSubmit={createOrUpdateTour} className="bg-gray-50 p-6 rounded-lg border border-gray-200 shadow-sm mb-8">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="col-span-2">
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Nome do Passeio</label>
-                      <input type="text" value={toursForm.title} onChange={e => setToursForm({ ...toursForm, title: e.target.value })} className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition" required placeholder="Ex: Passeio de Barco" />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Destaques (um por linha)</label>
-                      <textarea value={toursForm.bullets} onChange={e => setToursForm({ ...toursForm, bullets: e.target.value })} className="w-full border border-gray-300 rounded-lg p-2.5 h-32 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition" placeholder="Ex: Duração 2h\nInclui Bebidas" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Foto Ilustrativa</label>
-                      <input type="file" accept="image/*" onChange={e => { const f = e.target.files?.[0]; if (f) { setToursImageFile(f); setToursImagePreview(URL.createObjectURL(f)); } }} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-cyan-50 file:text-cyan-700 hover:file:bg-cyan-100" />
-                      {toursImagePreview && <img src={toursImagePreview} className="mt-2 h-24 rounded border object-cover" alt="Preview" />}
-                    </div>
-                    <div className="flex items-center pt-6">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={toursForm.visible} onChange={e => setToursForm({ ...toursForm, visible: e.target.checked })} className="w-5 h-5 text-cyan-600 rounded border-gray-300 focus:ring-cyan-500" />
-                        <span className="text-gray-700 font-medium">Visível?</span>
-                      </label>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Botão Texto</label>
-                      <input type="text" value={toursForm.cta_text} onChange={e => setToursForm({ ...toursForm, cta_text: e.target.value })} className="w-full border rounded p-2.5" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Botão Link</label>
-                      <input type="text" value={toursForm.cta_url} onChange={e => setToursForm({ ...toursForm, cta_url: e.target.value })} className="w-full border rounded p-2.5" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Ordem</label>
-                      <input type="number" value={toursForm.sort_order} onChange={e => setToursForm({ ...toursForm, sort_order: Number(e.target.value) })} className="w-full border rounded p-2.5" />
-                    </div>
-                  </div>
-                  <div className="mt-5 flex gap-3">
-                    <button type="submit" className="px-6 py-2.5 bg-cyan-600 text-white rounded-lg font-semibold shadow hover:bg-cyan-700 transition">{toursEditingId ? 'Atualizar' : 'Adicionar'}</button>
-                    {toursEditingId && <button type="button" onClick={() => { setToursEditingId(null); setToursForm({ title: '', bullets: '', image_url: '', cta_text: '', cta_url: '', visible: true, sort_order: 0 }); setToursImageFile(null); setToursImagePreview(''); }} className="px-6 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">Cancelar</button>}
-                  </div>
+                {/* Content Editor Hidden for SaaS
+                <form onSubmit={createOrUpdateTour} ...>
+                  ...
                 </form>
-                {toursAdminLoading && <p>Carregando...</p>}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {toursAdmin.map(item => (
-                    <div key={item.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50 flex gap-4">
-                      {item.image_url && <img src={item.image_url} className="w-24 h-24 object-cover rounded" alt="" />}
-                      <div className="flex-1">
-                        <h4 className="font-bold">{item.title}</h4>
-                        <div className="flex gap-2 mt-2">
-                          <button onClick={() => editTour(item)} className="text-sm bg-blue-100 text-blue-700 px-3 py-1 rounded">Editar</button>
-                          <button onClick={() => deleteTour(item.id)} className="text-sm bg-red-100 text-red-700 px-3 py-1 rounded">Excluir</button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                */}
+                <div className="bg-yellow-50 p-4 rounded border border-yellow-200 text-yellow-800 text-sm">
+                  O conteúdo desta página será gerenciado pelo novo editor visual (em breve).
                 </div>
               </div>
             )}
@@ -2203,46 +2111,11 @@ const App: React.FC = () => {
                     </button>
                   </div>
                 </div>
-                <form onSubmit={eventEditingId ? updateEvent : createEvent} className="bg-gray-50 p-6 rounded-lg border border-gray-200 shadow-sm mb-8">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="col-span-2">
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Título</label>
-                      <input type="text" value={eventForm.title} onChange={e => setEventForm({ ...eventForm, title: e.target.value })} className="w-full border rounded p-2.5" required />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Data</label>
-                      <input type="date" value={eventForm.date} onChange={e => setEventForm({ ...eventForm, date: e.target.value })} className="w-full border rounded p-2.5" required />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Hora (Opcional)</label>
-                      <input type="time" value={eventForm.time} onChange={e => setEventForm({ ...eventForm, time: e.target.value })} className="w-full border rounded p-2.5" />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Banner</label>
-                      <input type="file" onChange={e => setEventBannerFile(e.target.files?.[0] || null)} className="w-full" />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">Descrição</label>
-                      <textarea value={eventForm.description} onChange={e => setEventForm({ ...eventForm, description: e.target.value })} className="w-full border rounded p-2.5 h-24" />
-                    </div>
-                  </div>
-                  <div className="mt-4">
-                    <button type="submit" className="px-6 py-2.5 bg-cyan-600 text-white rounded font-semibold">{eventEditingId ? 'Salvar' : 'Criar Evento'}</button>
-                  </div>
-                </form>
-                <div className="space-y-4">
-                  {events.map(ev => (
-                    <div key={ev.id} className="border p-4 rounded bg-white flex justify-between items-center">
-                      <div>
-                        <h3 className="font-bold">{ev.title}</h3>
-                        <p className="text-sm text-gray-600">{ev.date} {ev.time}</p>
-                      </div>
-                      <div className="flex gap-2">
-                        <button onClick={() => editEvent(ev)} className="bg-blue-100 text-blue-700 px-3 py-1 rounded">Editar</button>
-                        <button onClick={() => deleteEvent(String(ev.id))} className="bg-red-100 text-red-700 px-3 py-1 rounded">Excluir</button>
-                      </div>
-                    </div>
-                  ))}
+                {/* Content Editor Hidden for SaaS
+                <form ...>
+                */}
+                <div className="bg-yellow-50 p-4 rounded border border-yellow-200 text-yellow-800 text-sm">
+                  O conteúdo desta página será gerenciado pelo novo editor visual (em breve).
                 </div>
               </div>
             )}
@@ -2294,34 +2167,9 @@ const App: React.FC = () => {
                     </button>
                   </div>
                 </div>
-                <form onSubmit={saveHistoryBody} className="mb-8">
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Texto da História</label>
-                  <textarea value={historyBody} onChange={e => setHistoryBody(e.target.value)} className="w-full border rounded p-4 h-64 shadow-inner" placeholder="Escreva a história aqui..." />
-                  <button type="submit" className="mt-3 px-6 py-2 bg-green-600 text-white rounded font-semibold">Salvar Texto</button>
-                </form>
-
-                <div className="border-t pt-6">
-                  <h3 className="text-lg font-bold mb-4">Galeria da História</h3>
-                  <form onSubmit={uploadHistoryImage} className="flex gap-4 items-end mb-6">
-                    <div className="flex-1">
-                      <label className="block text-sm font-medium mb-1">Nova Imagem</label>
-                      <input type="file" onChange={e => setHistoryFile(e.target.files?.[0] || null)} className="w-full" />
-                    </div>
-                    <div className="flex-1">
-                      <label className="block text-sm font-medium mb-1">Legenda</label>
-                      <input type="text" value={historyCaption} onChange={e => setHistoryCaption(e.target.value)} className="w-full border rounded p-2" />
-                    </div>
-                    <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">Upload</button>
-                  </form>
-                  <div className="grid grid-cols-3 gap-4">
-                    {historyImages.map(img => (
-                      <div key={img.id} className="border rounded p-2 relative group">
-                        <img src={img.image_url} className="w-full h-32 object-cover rounded" alt="" />
-                        <p className="text-xs mt-1 truncate">{img.caption}</p>
-                        <button onClick={() => deleteHistoryImage(img.id)} className="absolute top-1 right-1 bg-red-600 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition">X</button>
-                      </div>
-                    ))}
-                  </div>
+                {/* History Content Editor Hidden for SaaS */}
+                <div className="bg-yellow-50 p-4 rounded border border-yellow-200 text-yellow-800 text-sm">
+                  O conteúdo desta página será gerenciado pelo novo editor visual (em breve).
                 </div>
               </div>
             )}
@@ -2337,11 +2185,20 @@ const App: React.FC = () => {
       <div className="hidden" />
       <main className="pb-24">
         {view === 'comoChegar' ? (
-          <ComoChegar
-            title={pageConfigs['como-chegar']?.title}
-            onBack={() => setView('none')}
-            onNext={() => setView('events')}
-          />
+          <div className="container mx-auto px-4 pt-0 max-w-3xl">
+            <div className="w-screen relative left-0 right-0 -ml-[50vw] -mr-[50vw] bg-white sticky top-0 z-40">
+              <div className="container mx-auto px-4 max-w-3xl">
+                <div className="flex items-center justify-between py-3">
+                  <button onClick={() => setView('none')} className="px-4 py-1.5 rounded-full bg-gray-300 text-gray-800 text-sm font-semibold">Voltar</button>
+                  <h2 className="text-2xl font-bold text-[#003B63]">{pageConfigs['como-chegar']?.title || 'Como Chegar'}</h2>
+                  <button onClick={() => setView('events')} className="px-4 py-1.5 rounded-full bg-gray-300 text-gray-800 text-sm font-semibold">Próximo</button>
+                </div>
+              </div>
+            </div>
+            <div className="p-16 text-center text-gray-400 font-medium">
+              Conteúdo em breve
+            </div>
+          </div>
         ) : view === 'anuncie' ? (
           <Anuncie
             categories={categories}
@@ -2386,57 +2243,8 @@ const App: React.FC = () => {
                 </div>
               </div>
             </div>
-            <div>
-              {publicEventsLoading ? (
-                <p>Carregando...</p>
-              ) : publicEventsError ? (
-                <p className="text-red-600">{publicEventsError}</p>
-              ) : publicEvents.length === 0 ? (
-                <p className="text-gray-600 text-sm">Nenhum evento encontrado.</p>
-              ) : (
-                <div className="space-y-4">
-                  {publicEvents.map((ev) => {
-                    const d = new Date(ev.date);
-                    const day = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-                    const weekdayRaw = d.toLocaleDateString('pt-BR', { weekday: 'long' });
-                    const weekday = weekdayRaw.charAt(0).toUpperCase() + weekdayRaw.slice(1);
-                    const locationName = locations.find(l => l.id === (ev as any).location_id)?.name;
-                    const share = async () => {
-                      try {
-                        const url = (ev as any).link || window.location.href;
-                        const text = `${ev.title} - ${day} - ${weekday}${locationName ? `\nLocal: ${locationName}` : ''}`;
-                        if ((navigator as any).share) {
-                          await (navigator as any).share({ title: ev.title, text, url });
-                        } else if (navigator.clipboard) {
-                          await navigator.clipboard.writeText(`${ev.title}\nData: ${day} - ${weekday}${locationName ? `\nLocal: ${locationName}` : ''}\n${url}`);
-                          alert('Link copiado para a Ã¡rea de transferÃªncia.');
-                        }
-                      } catch { }
-                    };
-                    return (
-                      <div
-                        key={ev.id}
-                        className="rounded-xl bg-blue-50 p-3 cursor-pointer hover:bg-blue-100 transition-transform duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500"
-                        onClick={() => { setSelectedEvent(ev); setView('eventDetail'); }}
-                      >
-                        {ev.banner_url && (
-                          <div className="rounded-xl overflow-hidden mb-3">
-                            <img src={ev.banner_url} alt={ev.title} className="w-full h-56 object-cover" />
-                          </div>
-                        )}
-                        <div className="px-1">
-                          <h3 className="font-extrabold text-slate-800 text-lg mb-1">{ev.title}</h3>
-                          <p className="text-sm text-gray-700"><span className="font-semibold">Data:</span> {day} - {weekday}{ev.time ? ` • ${ev.time}` : ''}</p>
-                          {locationName && (
-                            <p className="text-sm text-gray-700"><span className="font-semibold">Local:</span> {locationName}</p>
-                          )}
-                        </div>
-                        <button onClick={() => { setSelectedEvent(ev); setView('eventDetail'); }} className="mt-3 w-full py-2 rounded bg-[#003B63]/90 hover:bg-[#003B63]/90 text-white font-semibold">Saiba mais</button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+            <div className="p-16 text-center text-gray-400 font-medium">
+              Conteúdo em breve
             </div>
           </div>
         ) : view === 'eventDetail' ? (
@@ -2659,52 +2467,9 @@ const App: React.FC = () => {
                 </div>
               </div>
             </div>
-            <div className="">
-              {toursLoading ? (
-                <p>Carregando...</p>
-              ) : toursSections.length === 0 ? (
-                null
-              ) : (
-                <div className="space-y-6">
-                  {toursSections.map((sec) => (
-                    <div key={sec.id} className="w-full text-left bg-white rounded-xl shadow-md overflow-hidden transform hover:scale-105 transition-transform duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500">
-                      <div className="relative">
-                        {sec.image_url && (
-                          <img className="h-56 w-full object-cover" src={sec.image_url} alt={sec.title} />
-                        )}
-                      </div>
-                      <div className="p-4">
-                        <h3 className="text-lg font-semibold mb-2">{sec.title}</h3>
-                        {Array.isArray(sec.bullets) && sec.bullets.length > 0 && (
-                          <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">
-                            {sec.bullets.map((b, i) => (
-                              <li key={i}>{b}</li>
-                            ))}
-                          </ul>
-                        )}
-                        {(sec.cta_text && sec.cta_url) && (
-                          <div className="mt-3">
-                            <a href={sec.cta_url} target="_blank" rel="noreferrer" className="inline-block px-4 py-2 bg-cyan-700 text-white rounded">
-                              {sec.cta_text}
-                            </a>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+            <div className="p-16 text-center text-gray-400 font-medium">
+              Conteúdo em breve
             </div>
-            {/* Empresas relacionadas Ã  categoria "Passeios & Atividades" */}
-            {toursBusinesses.length > 0 && (
-              <div className="mt-10">
-                <BusinessList
-                  businesses={toursBusinesses}
-                  onBusinessSelect={(b) => { setSelectedBusiness(b); setView('none'); }}
-                  hideTitle
-                />
-              </div>
-            )}
           </div>
         ) : view === 'historyPage' ? (
           <div className="container mx-auto px-4 pt-0 max-w-3xl">
@@ -2717,33 +2482,8 @@ const App: React.FC = () => {
                 </div>
               </div>
             </div>
-            <div className="bg-white rounded-lg shadow p-6">
-              {historyPublicLoading ? (
-                <p>Carregando...</p>
-              ) : historyPublicError ? (
-                <p className="text-red-600">{historyPublicError}</p>
-              ) : (
-                <>
-                  <div className="rounded-lg overflow-hidden border bg-gray-50 mb-6">
-                    <img
-                      src={(historyPublicImages[0]?.image_url) || '/actions/nossa-historia.png'}
-                      alt={historyPublicImages[0]?.caption || 'História'}
-                      className="w-full h-64 md:h-80 object-cover"
-                    />
-                    {historyPublicImages[0]?.caption && (
-                      <div className="px-3 py-2 text-xs text-gray-700">{historyPublicImages[0]?.caption}</div>
-                    )}
-                  </div>
-
-                  {historyPublicBody && (
-                    <div className="prose prose-sm max-w-none whitespace-pre-wrap text-gray-800 text-justify">{historyPublicBody}</div>
-                  )}
-
-                  {!historyPublicBody && historyPublicImages.length === 0 && (
-                    <p className="text-gray-600 text-sm">Nenhum conteÃºdo disponÃ­vel.</p>
-                  )}
-                </>
-              )}
+            <div className="p-16 text-center text-gray-400 font-medium">
+              Conteúdo em breve
             </div>
           </div>
         ) : selectedBusiness ? (
