@@ -1987,48 +1987,7 @@ const App: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Page Config Editor */}
-                <div className="mb-8 bg-blue-50 p-6 rounded-lg border border-blue-200">
-                  <h3 className="font-bold text-blue-900 mb-4 text-lg">Personalizar Botão e Página (SaaS)</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label className="block text-sm font-semibold mb-2 text-gray-700">Título Exibido no Menu</label>
-                      <input
-                        type="text"
-                        className="w-full border border-gray-300 p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        placeholder={pageConfigs['como-chegar']?.title || 'Como Chegar'}
-                        value={pageConfigTitle}
-                        onChange={e => setPageConfigTitle(e.target.value)}
-                        onFocus={() => {
-                          if (!pageConfigTitle) setPageConfigTitle(pageConfigs['como-chegar']?.title || '');
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold mb-2 text-gray-700">Imagem de Capa do Botão</label>
-                      <div className="flex gap-4 items-center">
-                        {(pageConfigCoverPreview || pageConfigs['como-chegar']?.cover_url) && (
-                          <img src={pageConfigCoverPreview || pageConfigs['como-chegar']?.cover_url} className="h-16 w-16 object-cover rounded-lg border border-gray-300 shadow-sm" />
-                        )}
-                        <input type="file" onChange={e => {
-                          if (e.target.files?.[0]) {
-                            setPageConfigCoverFile(e.target.files[0]);
-                            setPageConfigCoverPreview(URL.createObjectURL(e.target.files[0]));
-                          }
-                        }} className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200" />
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-4 flex justify-end">
-                    <button
-                      onClick={() => savePageConfig('como-chegar')}
-                      disabled={pageConfigLoading}
-                      className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 transition shadow-sm"
-                    >
-                      {pageConfigLoading ? 'Salvando...' : 'Salvar Configuração'}
-                    </button>
-                  </div>
-                </div>
+
 
                 <form onSubmit={createOrUpdateComoChegar} className="bg-gray-50 p-6 rounded-lg border border-gray-200 shadow-sm mb-8">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
