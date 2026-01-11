@@ -63,7 +63,7 @@ const App: React.FC = () => {
   const [publicLoading, setPublicLoading] = useState(false);
   const [publicError, setPublicError] = useState<string | null>(null);
 
-  const { session, isAdmin } = useAuth();
+  const { session, isAdmin, signIn } = useAuth();
   const { guide: contextGuide, updateGuideSettings: contextUpdateGuide, loading: guideLoading, error: guideError, refreshGuide } = useGuide();
   const [guide, setGuide] = useState<GuideSettings>(contextGuide);
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
@@ -454,6 +454,22 @@ const App: React.FC = () => {
 
   const MAX_FILES = 5;
   const MAX_FILE_MB = 1; // limite por imagem
+
+  // Admin Login State
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState<string | null>(null);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError(null);
+    try {
+      await signIn(loginEmail, loginPassword);
+      window.location.reload(); // Refresh to ensure admin state is picked up
+    } catch (err: any) {
+      setLoginError(err.message || 'Erro ao entrar. Verifique suas credenciais.');
+    }
+  };
 
 
 
@@ -1795,7 +1811,56 @@ const App: React.FC = () => {
     }
   }, [isAdmin]);
 
-  if (isAdmin) {
+  // Route check for /admin
+  const isAtAdminRoute = typeof window !== 'undefined' && window.location.pathname === '/admin';
+
+  if (isAtAdminRoute) {
+    if (!isAdmin) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-100 font-sans">
+          <form onSubmit={handleLogin} className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md border border-gray-200">
+            <div className="text-center mb-6">
+              <h2 className="text-2xl font-bold text-[#003B63]">Painel Administrativo</h2>
+              <p className="text-gray-500 text-sm mt-1">Entre com suas credenciais</p>
+            </div>
+            {loginError && <div className="mb-4 p-3 bg-red-50 text-red-700 text-sm rounded border border-red-200">{loginError}</div>}
+            <div className="mb-4">
+              <label className="block mb-1 font-semibold text-gray-700 text-sm">Email</label>
+              <input
+                type="email"
+                value={loginEmail}
+                onChange={e => setLoginEmail(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition"
+                placeholder="seu@email.com"
+                required
+              />
+            </div>
+            <div className="mb-6">
+              <label className="block mb-1 font-semibold text-gray-700 text-sm">Senha</label>
+              <input
+                type="password"
+                value={loginPassword}
+                onChange={e => setLoginPassword(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition"
+                placeholder="••••••••"
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              className="w-full bg-[#003B63] text-white py-3 rounded-lg font-bold hover:bg-[#00558F] transition shadow-md"
+            >
+              Entrar
+            </button>
+            <div className="mt-6 text-center">
+              <a href="/" className="text-sm text-gray-500 hover:text-[#003B63] underline">Voltar para o site</a>
+            </div>
+          </form>
+        </div>
+      );
+    }
+
+    // If admin and at /admin, show the panel
     return (
       <div className="flex h-screen bg-gray-100 font-sans">
         {/* Sidebar */}
